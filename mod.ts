@@ -23,7 +23,7 @@ export {
 export type { Context, FS, Log, Shell } from "./context.ts";
 
 // Application
-export { Cli } from "./app.ts";
+export { Cli } from "./cli.ts";
 
 // Core
 export { Parser, ParserError } from "./parser.ts";
