@@ -1,216 +1,325 @@
-import {
-  type Arg,
-  ArgAction,
-  type CommandInstance,
-  type CommandMetadata,
-} from "./types.ts";
+// loru/packages/clepo/parser.ts
 
-export class ParserError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ParserError";
-  }
-}
+import { type Arg, ArgAction } from "./arg.ts";
+import type { Command } from "./command.ts";
+import type { CommandInstance } from "./command.ts";
+import { ClepoError, ErrorKind } from "./error.ts";
+import { type ArgCursor, type ParsedArg, RawArgs } from "./lexer.ts";
 
-interface ParseResult {
+/**
+ * The result of a successful parse operation.
+ */
+export interface ParseResult {
+  /** The instance of the matched command class, populated with parsed values. */
   instance: CommandInstance;
-  meta: CommandMetadata;
+  /** The command definition object for the matched command. */
+  command: Command;
+  /** `true` if the user requested help (e.g., via `--help`). */
   helpRequested?: boolean;
+  /** `true` if the user requested the version (e.g., via `--version`). */
   versionRequested?: boolean;
 }
 
 /**
+ * The result of processing a flag.
+ * @internal
+ */
+interface FlagResult {
+  help?: boolean;
+  version?: boolean;
+}
+
+/**
  * The core parser for clepo.
- * It resolves the command, parses arguments, and populates the command instance.
+ * It resolves the command, tokenizes arguments using the lexer,
+ * and populates the command instance.
  */
 export class Parser {
-  constructor(private root: CommandMetadata) {}
+  constructor(private root: Command) {}
 
   /**
    * Main entry point for parsing command-line arguments.
    */
   public parse(args: string[], env: Record<string, string> = {}): ParseResult {
-    // 1. Find the active command and which arguments were consumed for it.
-    const { meta: activeMeta, consumedIndices } = this.resolveCommand(args);
+    const { command: activeCommand, consumedIndices } = this.resolveCommand(
+      args,
+    );
 
-    // 2. Instantiate the command class.
-    const instance = new activeMeta.cls();
+    if (!activeCommand.cls) {
+      throw new ClepoError(
+        ErrorKind.Internal,
+        `Command "${activeCommand.name}" has no associated class constructor. This is an internal library error.`,
+        activeCommand,
+      );
+    }
+    const instance = new activeCommand.cls();
 
-    // 3. Parse all tokens (flags and positionals).
+    const remainingArgs = args.filter((_, i) => !consumedIndices.has(i));
+    const rawArgs = new RawArgs(remainingArgs);
+
     const { helpRequested, versionRequested } = this.parseTokens(
       instance,
-      activeMeta,
-      args,
-      consumedIndices,
+      activeCommand,
+      rawArgs,
     );
 
     if (helpRequested || versionRequested) {
-      return { instance, meta: activeMeta, helpRequested, versionRequested };
+      return {
+        instance,
+        command: activeCommand,
+        helpRequested,
+        versionRequested,
+      };
     }
 
-    // 4. Apply values from environment variables or defaults if they weren't set.
-    this.applyDefaultsAndEnv(instance, activeMeta, env);
+    this.applyDefaultsAndEnv(instance, activeCommand, env);
+    this.validateRequired(instance, activeCommand);
 
-    // 5. Check if all required arguments have been provided.
-    this.validateRequired(instance, activeMeta);
-
-    return { instance, meta: activeMeta };
+    return { instance, command: activeCommand };
   }
 
   /**
    * Walks through the arguments to identify the final subcommand to be executed.
-   * @returns The metadata for the active command and a set of argument indices that were consumed (i.e., the subcommand names).
    */
   private resolveCommand(
     args: string[],
-  ): { meta: CommandMetadata; consumedIndices: Set<number> } {
-    let currentMeta = this.root;
+  ): { command: Command; consumedIndices: Set<number> } {
+    let currentCommand = this.root;
     const consumedIndices = new Set<number>();
 
     for (let i = 0; i < args.length; i++) {
       const token = args[i];
-      // Stop resolving subcommands if we hit a flag.
-      if (token.startsWith("-")) {
+      if (token.startsWith("-") || token === "--") {
         break;
       }
-      if (currentMeta.subcommands.has(token)) {
-        currentMeta = currentMeta.subcommands.get(token)!;
+
+      const subcommand = currentCommand.subcommands.get(token);
+      if (subcommand) {
+        currentCommand = subcommand;
         consumedIndices.add(i);
       } else {
-        // This is a positional argument, not a subcommand.
-        break;
+        break; // Not a subcommand, must be a positional
       }
     }
-    return { meta: currentMeta, consumedIndices };
+    return { command: currentCommand, consumedIndices };
   }
 
   /**
-   * Iterates through all tokens and populates the command instance.
+   * Iterates through all arguments from `RawArgs` and populates the command instance.
    */
   private parseTokens(
     instance: CommandInstance,
-    meta: CommandMetadata,
-    args: string[],
-    consumed: Set<number>,
+    command: Command,
+    rawArgs: RawArgs,
   ) {
+    const cursor = rawArgs.cursor();
     let helpRequested = false;
     let versionRequested = false;
+    let endOfFlags = false;
 
-    const positionals = [...meta.args.values()]
+    const positionals = [...command.args.values()]
       .filter((a) => !a.short && !a.long)
       .sort((a, b) => (a.index ?? Infinity) - (b.index ?? Infinity));
     let positionalIndex = 0;
 
-    for (let cursor = 0; cursor < args.length; cursor++) {
-      if (consumed.has(cursor)) {
+    while (true) {
+      const arg = rawArgs.next(cursor);
+      if (!arg) break;
+
+      if (endOfFlags) {
+        this.processPositional(
+          instance,
+          command,
+          arg,
+          positionals,
+          positionalIndex++,
+        );
         continue;
       }
 
-      const token = args[cursor];
+      if (arg.isEscape()) {
+        endOfFlags = true;
+        continue;
+      }
 
-      if (token.startsWith("-")) {
-        // Handle Flags
-        const result = this.parseFlag(
+      if (arg.isLong()) {
+        const result = this.processLongFlag(
           instance,
-          meta,
-          token,
-          args[cursor + 1],
+          command,
+          arg,
+          rawArgs,
+          cursor,
         );
-        if (result.valueConsumed) cursor++;
         if (result.help) helpRequested = true;
         if (result.version) versionRequested = true;
-      } else {
-        // Handle Positionals
-        if (positionalIndex >= positionals.length) {
-          throw new ParserError(`Unexpected argument: ${token}`);
-        }
-        const argDef = positionals[positionalIndex];
-        const value = this.validateAndParseValue(token, argDef);
-        const action = this.resolveAction(argDef);
-        this.applyValue(
-          instance as unknown as Record<string, unknown>,
-          argDef,
-          action,
-          value,
-        );
+        continue;
+      }
 
-        // Only advance to the next positional if the action is not 'Append'.
-        // If it is 'Append', it will consume all subsequent positional args.
-        if (action !== ArgAction.Append) {
-          positionalIndex++;
-        }
+      if (arg.isShort()) {
+        const result = this.processShortFlag(
+          instance,
+          command,
+          arg,
+          rawArgs,
+          cursor,
+        );
+        if (result.help) helpRequested = true;
+        if (result.version) versionRequested = true;
+        continue;
+      }
+
+      // If we reach here, it's a positional argument.
+      const currentPositional = positionals[positionalIndex];
+      this.processPositional(
+        instance,
+        command,
+        arg,
+        positionals,
+        positionalIndex,
+      );
+      if (
+        currentPositional &&
+        this.resolveAction(currentPositional) !== ArgAction.Append
+      ) {
+        positionalIndex++;
       }
     }
+
     return { helpRequested, versionRequested };
   }
 
-  /**
-   * Parses a single flag token (e.g., `-f` or `--force`).
-   */
-  private parseFlag(
+  private processPositional(
     instance: CommandInstance,
-    meta: CommandMetadata,
-    token: string,
-    nextToken?: string,
+    command: Command,
+    arg: ParsedArg,
+    positionals: Arg[],
+    index: number,
   ) {
-    let flagName = token.replace(/^-+/, "");
-    let explicitValue: string | undefined;
-
-    if (flagName.includes("=")) {
-      [flagName, explicitValue] = flagName.split("=", 2);
+    if (index >= positionals.length) {
+      throw new ClepoError(
+        ErrorKind.UnexpectedArgument,
+        `Found argument '${arg.toValue()}' which wasn't expected, or isn't valid in this context.`,
+        command,
+      );
     }
+    const argDef = positionals[index];
+    const value = this.validateAndParseValue(arg.toValue(), argDef, command);
+    this.applyValue(instance, argDef, this.resolveAction(argDef), value);
+  }
 
-    // Handle special built-in flags first
-    if (flagName === "h" || flagName === "help") return { help: true };
-    if (flagName === "V" || flagName === "version") return { version: true };
+  private processLongFlag(
+    instance: CommandInstance,
+    command: Command,
+    arg: ParsedArg,
+    rawArgs: RawArgs,
+    cursor: ArgCursor,
+  ): FlagResult {
+    const [flagName, attachedValue] = arg.toLong()!;
 
-    const argDef = this.findArgDef(flagName, meta);
+    if (flagName === "help") return { help: true };
+    if (flagName === "version") return { version: true };
+
+    const argDef = this.findArgDef(flagName, command);
     if (!argDef) {
-      throw new ParserError(`Unknown argument: ${token}`);
+      throw new ClepoError(
+        ErrorKind.UnknownArgument,
+        `Found argument '--${flagName}' which wasn't expected.`,
+        command,
+      );
     }
 
     const action = this.resolveAction(argDef);
-    let value: string | undefined;
-    let valueConsumed = false;
+    let value: string | undefined = attachedValue;
 
-    if (this.actionTakesValue(action)) {
-      if (explicitValue !== undefined) {
-        value = explicitValue;
-      } else if (nextToken && !nextToken.startsWith("-")) {
-        value = nextToken;
-        valueConsumed = true;
+    if (this.actionTakesValue(action) && value === undefined) {
+      const nextArg = rawArgs.peek(cursor);
+      if (nextArg && !nextArg.isLong() && !nextArg.isShort()) {
+        value = rawArgs.nextRaw(cursor);
       } else {
-        throw new ParserError(`Flag '${token}' requires a value.`);
+        throw new ClepoError(
+          ErrorKind.MissingValue,
+          `The argument '--${flagName}' requires a value, but none was supplied.`,
+          command,
+        );
       }
     }
 
-    const parsedValue = this.validateAndParseValue(value, argDef);
-    this.applyValue(
-      instance as unknown as Record<string, unknown>,
-      argDef,
-      action,
-      parsedValue,
-    );
-
-    return { valueConsumed };
+    const parsedValue = this.validateAndParseValue(value, argDef, command);
+    this.applyValue(instance, argDef, action, parsedValue);
+    return {};
   }
 
-  /**
-   * Finds an argument definition within the current command or its parents (for globals).
-   */
-  private findArgDef(flagName: string, meta: CommandMetadata): Arg | undefined {
-    let current: CommandMetadata | undefined = meta;
-    while (current) {
-      for (const arg of current.args.values()) {
-        const isMatch = arg.short === flagName || arg.long === flagName;
-        if (isMatch) {
-          // If it's not on the immediate command, it must be global to be valid.
-          if (current === meta || arg.global) {
-            return arg;
+  private processShortFlag(
+    instance: CommandInstance,
+    command: Command,
+    arg: ParsedArg,
+    rawArgs: RawArgs,
+    cursor: ArgCursor,
+  ): FlagResult {
+    const shorts = arg.toShort()!;
+    let helpRequested = false;
+    let versionRequested = false;
+
+    while (true) {
+      const flagChar = shorts.nextFlag();
+      if (!flagChar) break;
+
+      if (flagChar === "h") {
+        helpRequested = true;
+        continue;
+      }
+      if (flagChar === "V") {
+        versionRequested = true;
+        continue;
+      }
+
+      const argDef = this.findArgDef(flagChar, command);
+      if (!argDef) {
+        throw new ClepoError(
+          ErrorKind.UnknownArgument,
+          `Found argument '-${flagChar}' which wasn't expected.`,
+          command,
+        );
+      }
+
+      const action = this.resolveAction(argDef);
+      let value: string | undefined;
+
+      if (this.actionTakesValue(action)) {
+        value = shorts.nextValue(); // e.g., -j4
+        if (value === undefined) {
+          const nextArg = rawArgs.peek(cursor);
+          if (nextArg && !nextArg.isLong() && !nextArg.isShort()) {
+            value = rawArgs.nextRaw(cursor); // e.g., -j 4
+          } else {
+            throw new ClepoError(
+              ErrorKind.MissingValue,
+              `The argument '-${flagChar}' requires a value, but none was supplied.`,
+              command,
+            );
           }
         }
       }
-      current = current.parent;
+      const parsedValue = this.validateAndParseValue(value, argDef, command);
+      this.applyValue(instance, argDef, action, parsedValue);
+
+      if (value !== undefined) {
+        break; // A value-taking flag consumes the rest of the cluster.
+      }
+    }
+    return { help: helpRequested, version: versionRequested };
+  }
+
+  /**
+   * Finds an argument definition within the current command.
+   * NOTE: This relies on the `finalize()` method having been called to propagate
+   * global arguments down to the command's `args` map, making parent lookups unnecessary.
+   */
+  private findArgDef(flagName: string, command: Command): Arg | undefined {
+    for (const arg of command.args.values()) {
+      if (arg.short === flagName || arg.long === flagName) {
+        return arg;
+      }
     }
     return undefined;
   }
@@ -220,29 +329,25 @@ export class Parser {
    */
   private applyDefaultsAndEnv(
     instance: CommandInstance,
-    meta: CommandMetadata,
+    command: Command,
     env: Record<string, string>,
   ) {
-    for (const arg of meta.args.values()) {
+    for (const arg of command.args.values()) {
       const key = arg.id!;
       if ((instance as unknown as Record<string, unknown>)[key] !== undefined) {
-        continue; // Value was already set by parser
+        continue;
       }
 
-      let value: unknown;
+      let valueSource: string | undefined;
       if (arg.env && env[arg.env]) {
-        value = this.validateAndParseValue(env[arg.env], arg);
-      } else if (arg.default !== undefined) {
-        value = arg.default;
+        valueSource = env[arg.env];
       }
 
-      if (value !== undefined) {
-        this.applyValue(
-          instance as unknown as Record<string, unknown>,
-          arg,
-          this.resolveAction(arg),
-          value,
-        );
+      if (valueSource !== undefined) {
+        const value = this.validateAndParseValue(valueSource, arg, command);
+        this.applyValue(instance, arg, this.resolveAction(arg), value);
+      } else if (arg.default !== undefined) {
+        (instance as unknown as Record<string, unknown>)[key] = arg.default;
       }
     }
   }
@@ -250,13 +355,20 @@ export class Parser {
   /**
    * Checks that all required arguments have a value.
    */
-  private validateRequired(instance: CommandInstance, meta: CommandMetadata) {
-    for (const arg of meta.args.values()) {
+  private validateRequired(instance: CommandInstance, command: Command) {
+    for (const arg of command.args.values()) {
       if (
         arg.required &&
         (instance as unknown as Record<string, unknown>)[arg.id!] === undefined
       ) {
-        throw new ParserError(`Missing required argument: ${arg.id}`);
+        const name = arg.long
+          ? `--${arg.long}`
+          : (arg.short ? `-${arg.short}` : arg.id!);
+        throw new ClepoError(
+          ErrorKind.MissingRequiredArgument,
+          `The following required argument was not provided: ${name}`,
+          command,
+        );
       }
     }
   }
@@ -265,26 +377,56 @@ export class Parser {
    * Takes a raw string value and validates/parses it according to the Arg definition.
    */
   private validateAndParseValue(
-    value: string | undefined,
+    value: string | undefined | null,
     argDef: Arg,
+    command: Command,
   ): unknown {
-    // For actions like SetTrue or Count, the value is irrelevant.
     if (!this.actionTakesValue(this.resolveAction(argDef))) {
       return undefined;
     }
-    if (value === undefined) {
-      // This can happen for optional flags that weren't provided.
+    if (value === undefined || value === null) {
       return undefined;
     }
 
+    const argName = argDef.long ?? argDef.short ?? argDef.id!;
+
     let parsedValue: unknown = value;
-    if (argDef.valueParser) {
-      parsedValue = argDef.valueParser(value);
-    } else if (argDef.type === "number") {
+    if (typeof argDef.valueParser === "function") {
+      try {
+        parsedValue = argDef.valueParser(value);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        throw new ClepoError(
+          ErrorKind.InvalidArgumentValue,
+          `Invalid value for '${argName}': ${message}`,
+          command,
+        );
+      }
+    } else if (argDef.valueParser === "number" || argDef.type === "number") {
       parsedValue = Number(value);
       if (isNaN(parsedValue as number)) {
-        throw new ParserError(
-          `Invalid value for '${argDef.id}': expected a number.`,
+        throw new ClepoError(
+          ErrorKind.InvalidArgumentValue,
+          `Invalid value for '${argName}': expected a number, got '${value}'.`,
+          command,
+        );
+      }
+    } else if (argDef.valueParser === "file") {
+      try {
+        Deno.statSync(value);
+      } catch (e) {
+        if (e instanceof Deno.errors.NotFound) {
+          throw new ClepoError(
+            ErrorKind.InvalidArgumentValue,
+            `Invalid value for '${argName}': file not found at path '${value}'`,
+            command,
+          );
+        }
+        const message = e instanceof Error ? e.message : String(e);
+        throw new ClepoError(
+          ErrorKind.InvalidArgumentValue,
+          `Invalid value for '${argName}': could not access file at '${value}' (${message})`,
+          command,
         );
       }
     } else if (argDef.type === "boolean") {
@@ -295,10 +437,12 @@ export class Parser {
       argDef.possibleValues &&
       !argDef.possibleValues.includes(String(parsedValue))
     ) {
-      throw new ParserError(
-        `Invalid value '${parsedValue}' for '${argDef.id}'. Possible values: ${
+      throw new ClepoError(
+        ErrorKind.InvalidArgumentValue,
+        `'${parsedValue}' is not a valid value for '${argName}'.\n    [possible values: ${
           argDef.possibleValues.join(", ")
-        }`,
+        }]`,
+        command,
       );
     }
 
@@ -310,7 +454,6 @@ export class Parser {
    */
   private resolveAction(arg: Arg): ArgAction {
     if (arg.action) return arg.action;
-    // Infer default actions
     if (arg.type === "boolean") return ArgAction.SetTrue;
     if (arg.type === "list") return ArgAction.Append;
     return ArgAction.Set;
@@ -327,11 +470,12 @@ export class Parser {
    * Updates the command instance with a parsed value based on the specified action.
    */
   private applyValue(
-    target: Record<string, unknown>,
+    instance: CommandInstance,
     arg: Arg,
     action: ArgAction,
     value: unknown,
   ) {
+    const target = instance as unknown as Record<string, unknown>;
     const key = arg.id!;
     switch (action) {
       case ArgAction.Set:

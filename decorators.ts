@@ -1,27 +1,42 @@
-import type { Arg, CommandConfig, CommandMetadata } from "./types.ts";
+// loru/packages/clepo/decorators.ts
 
+// loru/packages/clepo/decorators.ts
+
+import type { Arg as ArgConfig } from "./arg.ts";
+import { Command as CommandBuilder } from "./command.ts";
+import type { CommandConfig } from "./command.ts";
+import { ClepoError, ErrorKind } from "./error.ts";
+
+// The global registry mapping class constructors to their Command builder instances.
+// This is the heart of the decorator-based API.
 // deno-lint-ignore no-explicit-any
-const REGISTRY = new Map<any, CommandMetadata>();
+const REGISTRY = new Map<any, CommandBuilder>();
 
 /**
- * Retrieves or initializes the command metadata for a given class constructor.
- * This is an internal utility function for the decorator system.
+ * Retrieves or initializes the Command builder for a given class constructor.
+ *
+ * This function is the central point of contact for the decorator system. When a
+ * decorator is applied to a class or its property, this function is used to get
+ * the underlying `Command` instance that holds the CLI's configuration. If an
+ * instance doesn't exist for a given class, it's created and stored in the
+ * global `REGISTRY`.
+ *
  * @param target The class constructor.
- * @returns The metadata object for the command.
+ * @returns The `Command` builder instance for the class.
  */
 // deno-lint-ignore no-explicit-any
-export function getCommandMetadata(target: any): CommandMetadata {
-  let meta = REGISTRY.get(target);
-  if (!meta) {
-    meta = {
-      cls: target,
-      config: {},
-      args: new Map(),
-      subcommands: new Map(),
-    };
-    REGISTRY.set(target, meta);
+export function getCommand(target: any): CommandBuilder {
+  let command = REGISTRY.get(target);
+  if (!command) {
+    // Default the command name to the class name (lowercase).
+    // The @Command decorator will override this if a name is provided in its config.
+    const name = target.name.toLowerCase();
+    command = new CommandBuilder(name);
+    // Associate the class constructor with the command for later instantiation.
+    command.cls = target;
+    REGISTRY.set(target, command);
   }
-  return meta;
+  return command;
 }
 
 /**
@@ -35,30 +50,82 @@ export function getCommandMetadata(target: any): CommandMetadata {
  *   version: "1.0.0",
  *   about: "A cool command-line tool."
  * })
- * class MyCli {}
+ * class MyCli implements CommandInstance {
+ *   async run(ctx: Context) { console.log("Hello, world!"); }
+ * }
  * ```
  */
 export function Command(config: CommandConfig = {}): ClassDecorator {
   // deno-lint-ignore no-explicit-any
   return function (target: any) {
-    const meta = getCommandMetadata(target);
-    meta.config = { ...meta.config, ...config };
+    const command = getCommand(target);
 
-    // Default name to class name if not set
-    if (!meta.config.name) {
-      meta.config.name = target.name.toLowerCase();
+    // Apply configuration from the decorator to the Command instance
+    if (config.name) command.name = config.name;
+    if (config.version) command.setVersion(config.version);
+    if (config.about) command.setAbout(config.about);
+    if (config.longAbout) command.setLongAbout(config.longAbout);
+
+    // Apply any behavioral settings
+    if (config.settings) {
+      for (const setting of config.settings) {
+        command.setting(setting);
+      }
     }
 
-    // Register explicitly provided subcommands from config
+    // Register any subcommands provided in the config array.
+    // Note: The `@Subcommand` decorator is the preferred way to do this.
     if (config.subcommands) {
-      registerSubcommands(meta, config.subcommands);
+      registerSubcommands(command, config.subcommands);
     }
   };
 }
 
 /**
+ * Property decorator for defining a command-line argument (a flag, option, or positional).
+ * The behavior of the argument is determined by the configuration provided.
+ *
+ * @example
+ * ```typescript
+ * class MyCli {
+ *   @Arg({ short: "v", long: true, help: "Enable verbose mode" })
+ *   verbose = false;
+ *
+ *   @Arg({ required: true, help: "The input file to process" })
+ *   inputFile!: string;
+ * }
+ * ```
+ */
+export function Arg(config: ArgConfig = {}): PropertyDecorator {
+  return function (target: unknown, propertyKey: string | symbol) {
+    if (typeof target !== "object" || target === null) return;
+    const constructor = (target as Record<string, unknown>).constructor;
+    const command = getCommand(constructor);
+    const name = String(propertyKey);
+
+    // Create a mutable copy to avoid modifying the user's original config object.
+    const argConfig = { ...config };
+
+    // Default the argument's ID to the property name. This is crucial for mapping
+    // the parsed value back to the class instance.
+    if (!argConfig.id) {
+      argConfig.id = name;
+    }
+
+    // If `long: true`, automatically generate the kebab-case long flag name
+    // from the property's camelCase name.
+    if (argConfig.long === true) {
+      argConfig.long = toKebabCase(name);
+    }
+
+    command.addArg(argConfig);
+  };
+}
+
+/**
  * Decorator to register one or more subcommand classes to a parent command.
- * It can be used as a class decorator or a property decorator.
+ * It can be used as a class decorator or a property decorator. When used as a
+ * property decorator, the parsed subcommand instance will be injected into that property.
  *
  * @example
  * ```typescript
@@ -70,109 +137,45 @@ export function Command(config: CommandConfig = {}): ClassDecorator {
  * ```
  */
 export function Subcommand(
-  subcommands: (new () => unknown)[],
+  subcommandClasses: (new () => unknown)[],
 ): ClassDecorator | PropertyDecorator {
   return function (target: unknown, propertyKey?: string | symbol) {
-    if (typeof propertyKey === "undefined") {
-      // Class Decorator
-      const meta = getCommandMetadata(target);
-      registerSubcommands(meta, subcommands);
-    } else {
-      // Property Decorator
-      // target is prototype for instance properties
-      if (typeof target !== "object" || target === null) return;
-      const constructor = (target as Record<string, unknown>).constructor;
-      const meta = getCommandMetadata(constructor);
-      registerSubcommands(meta, subcommands);
+    const command = getCommand(
+      propertyKey ? (target as { constructor: unknown }).constructor : target,
+    );
+    registerSubcommands(command, subcommandClasses);
 
-      // Mark this property as the one to hold the executed subcommand instance
-      // We store this in a custom property on the metadata object
-      (meta as CommandMetadata & { subcommandProperty?: unknown })
-        .subcommandProperty = propertyKey;
+    // If used as a property decorator, store the property key so the parser knows
+    // where to inject the subcommand instance after parsing.
+    if (propertyKey) {
+      command.subcommandProperty = String(propertyKey);
     }
   };
 }
 
+/** Helper function to register subcommand classes with a parent command. */
 function registerSubcommands(
-  meta: CommandMetadata,
-  subcommands: (new () => unknown)[],
+  parentCommand: CommandBuilder,
+  subcommandClasses: (new () => unknown)[],
 ) {
-  for (const sub of subcommands) {
-    const subMeta = getCommandMetadata(sub);
-    subMeta.parent = meta;
-
-    // Use the class name as default name if not provided in config (yet)
-    // If the child class hasn't been decorated yet, config.name might be undefined.
-    // We can default it here, and @Command will override/confirm it later.
-    if (!subMeta.config.name) {
-      subMeta.config.name = sub.name.toLowerCase();
-    }
-
-    meta.subcommands.set(subMeta.config.name, subMeta);
-
-    // Register aliases
-    if (subMeta.config.aliases) {
-      for (const alias of subMeta.config.aliases) {
-        meta.subcommands.set(alias, subMeta);
-      }
-    }
+  for (const subCls of subcommandClasses) {
+    const subCommand = getCommand(subCls);
+    parentCommand.addSubcommand(subCommand);
   }
 }
 
 /**
- * Property decorator for defining a command-line argument (a flag, option, or positional).
- * The behavior of the argument is determined by the configuration provided.
- *
- * @example
- * ```typescript
- * class MyCli {
- *   // A boolean flag: --verbose or -v
- *   @Arg({ short: "v", long: true, help: "Enable verbose mode" })
- *   verbose = false;
- *
- *   // A required positional argument
- *   @Arg({ required: true, help: "The input file to process" })
- *   inputFile!: string;
- * }
- * ```
- */
-export function Arg(config: Arg = {}): PropertyDecorator {
-  return function (target: unknown, propertyKey: string | symbol) {
-    if (typeof target !== "object" || target === null) return;
-    const constructor = (target as Record<string, unknown>).constructor;
-    const meta = getCommandMetadata(constructor);
-    const name = String(propertyKey);
-
-    // Default ID to property name
-    if (!config.id) {
-      config.id = name;
-    }
-
-    // Default long flag to kebab-case of property name if true
-    if (config.long === true) {
-      config.long = toKebabCase(name);
-    }
-
-    meta.args.set(name, config);
-  };
-}
-
-/**
  * Property decorator used to restrict an argument's values to a specific set,
- * often derived from a TypeScript enum.
+ * often derived from a TypeScript enum. This decorator must be placed *after* `@Arg`.
  *
  * @param values An array of strings or a TypeScript string enum.
  *
  * @example
  * ```typescript
- * enum LogLevel {
- *   Info = "info",
- *   Warn = "warn",
- *   Error = "error",
- * }
+ * enum LogLevel { Info = "info", Warn = "warn" }
  *
  * class MyCli {
- *   @Arg({ long: true, help: "Set the log level" })
+ *   @Arg({ long: true })
  *   @ValueEnum(LogLevel)
  *   logLevel: LogLevel = LogLevel.Info;
  * }
@@ -184,23 +187,30 @@ export function ValueEnum(
   return function (target: unknown, propertyKey: string | symbol) {
     if (typeof target !== "object" || target === null) return;
     const constructor = (target as Record<string, unknown>).constructor;
-    const meta = getCommandMetadata(constructor);
+    const command = getCommand(constructor);
     const name = String(propertyKey);
 
-    const arg = meta.args.get(name) || { id: name };
+    const arg = command.args.get(name);
+    if (!arg) {
+      // Decorators run in reverse order of their appearance.
+      // Throw a structured error to guide the user to place @ValueEnum after @Arg.
+      throw new ClepoError(
+        ErrorKind.Internal,
+        `Decorator error on property "${name}": @ValueEnum must be placed after an @Arg decorator.`,
+      );
+    }
 
-    let possibleValues: string[] = [];
+    let possibleValues: string[];
     if (Array.isArray(values)) {
       possibleValues = values.map(String);
     } else {
-      // Handle TS String Enum or Object
+      // This handles TypeScript string enums or other string-valued objects.
       possibleValues = Object.values(values).filter((v) =>
         typeof v === "string"
       ) as string[];
     }
 
     arg.possibleValues = possibleValues;
-    meta.args.set(name, arg);
   };
 }
 
@@ -209,5 +219,10 @@ export function ValueEnum(
  * @internal
  */
 function toKebabCase(str: string): string {
-  return str.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+  // This regex handles cases where an uppercase letter is followed by a lowercase one,
+  // preventing "--f-oo-bar" from "fooBar" and correctly producing "--foo-bar".
+  // It also handles acronyms like "URL" becoming "url".
+  return str
+    .replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, "$1-$2")
+    .toLowerCase();
 }
