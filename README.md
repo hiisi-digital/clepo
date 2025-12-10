@@ -1,151 +1,88 @@
-# Clepo: CLI Framework for Deno
+# `clepo`
 
-**Clepo** (CLI Repository/Power) is a robust, type-safe CLI framework for Deno,
-inspired by Rusts `clap` and `structopt`. It leverages TypeScript decorators to
-define commands, arguments, and options in a declarative, object-oriented
-manner.
+<div align="center" style="text-align: center;">
 
-## Key Features
+[![GitHub Stars](https://img.shields.io/github/stars/hiisi-digital/clepo.svg)](https://github.com/hiisi-digital/clepo/stargazers)
+[![JSR Version](https://img.shields.io/jsr/v/@clepo/core)](https://jsr.io/@clepo/core)
+[![GitHub Issues](https://img.shields.io/github/issues/hiisi-digital/clepo.svg)](https://github.com/hiisi-digital/clepo/issues)
+![License](https://img.shields.io/github/license/hiisi-digital/clepo?color=%23009689)
 
-- **Decorator-based Definition**: Define your CLI structure using `@Command`,
-  `@Arg`, and `@Option` decorators on classes and properties.
-- **Dry-Run Safety**: Built-in support for "Dry Runs". Commands marked as
-  `mutable` automatically respect a `--dry-run` flag, allowing you to simulate
-  destructive actions without side effects.
-- **Dependency Injection**: Automatic injection of a `Context` object containing
-  abstracted File System and Shell interfaces.
-- **Subcommands**: Easy nesting of commands to create complex CLI hierarchies
-  (e.g., `app remote add origin`).
-- **Auto-Help**: Automatic generation of help messages and usage instructions.
+> A robust CLI framework for Deno that enforces safe dry-runs via dependency
+> injection.
 
-## Installation
+</div>
+
+## Usage
+
+The `clepo` package provides a decorator-based interface for building
+command-line tools. It maps arguments to class properties and injects a context
+object for handling side effects safely.
 
 ```typescript
-import { Cli, Command } from "jsr:@clepo/core"; // Example import
-// OR from relative path if inside workspace
-```
-
-## Quick Start
-
-### 1. Define a Command
-
-```typescript
-import { Arg, Command, Context, Option } from "./mod.ts";
+import { Arg, Cli, Command, Context, Option } from "jsr:@clepo/core";
 
 @Command({
-  name: "greet",
-  about: "Greets a user",
+  name: "rm",
+  about: "Remove a file",
+  mutable: true, // Enforces safety checks
 })
-class GreetCommand {
-  @Option({ short: "l", help: "Loudly greet (uppercase)" })
-  loud: boolean = false;
+class RemoveCmd {
+  @Option({ short: "f", help: "Force removal" })
+  force: boolean = false;
 
-  @Arg({ help: "The name to greet" })
-  name: string = "World";
-
-  async run(ctx: Context) {
-    let message = `Hello, ${this.name}!`;
-    if (this.loud) {
-      message = message.toUpperCase();
-    }
-    ctx.log.info(message);
-  }
-}
-```
-
-### 2. Run the CLI
-
-```typescript
-import { Cli } from "./mod.ts";
-
-if (import.meta.main) {
-  const cli = new Cli(GreetCommand);
-  await cli.run(Deno.args);
-}
-```
-
-### 3. Usage
-
-```bash
-deno run -A main.ts --loud Bob
-# Output: [INFO] HELLO, BOB!
-
-deno run -A main.ts --help
-# Output: Usage: greet [OPTIONS] [COMMAND] ...
-```
-
-## Advanced Usage
-
-### Mutable Commands & Dry Runs
-
-Clepo shines when dealing with commands that modify the system state.
-
-```typescript
-@Command({
-  name: "delete",
-  about: "Deletes a file",
-  mutable: true, // <--- Signals that this command mutates state
-})
-class DeleteCommand {
   @Arg()
   path: string;
 
   async run(ctx: Context) {
-    // ctx.fs is automatically swapped based on --dry-run
-    if (await ctx.fs.exists(this.path)) {
+    // ctx.fs automatically handles dry-run logic
+    if (this.force || await ctx.helper.confirm(`Delete ${this.path}?`)) {
       await ctx.fs.remove(this.path);
       ctx.log.info(`Deleted ${this.path}`);
-    } else {
-      ctx.log.warn("File not found");
     }
   }
 }
-```
 
-**Running with `--dry-run`:**
-
-```bash
-deno run -A main.ts delete ./config.json --dry-run
-# Output: 
-# [DryRun] Would remove "./config.json"
-# [INFO] Deleted ./config.json
-```
-
-### Subcommands
-
-```typescript
-@Command({
-  name: "remote",
-  subcommands: [AddRemote, RemoveRemote],
-})
-class RemoteCommand {
-  // Acts as a namespace
+if (import.meta.main) {
+  await new Cli(RemoveCmd).run(Deno.args);
 }
 ```
 
-## API Reference
+## Features
 
-### Decorators
+- **Decorator-based Definition**: declarative mapping of CLI arguments to class
+  properties
+- **Dry-Run Safety**: built-in `mutable` flag enforces `dry-run` checks
+- **Dependency Injection**: abstracts filesystem and shell operations
+  - _Real Mode_: performs actual I/O operations
+  - _Dry Mode_: logs intended operations without side effects
+- **Subcommands**: supports nested command structures via recursion
+- **Auto-Help**: generates usage instructions from metadata
 
-- `@Command(config)`: Class decorator.
-  - `name`: Command name.
-  - `about`: Short description.
-  - `subcommands`: Array of subcommand classes.
-  - `mutable`: Boolean. If true, implies side effects.
-- `@Option(config)`: Property decorator for flags (e.g., `--verbose`, `-v`).
-- `@Arg(config)`: Property decorator for positional arguments.
+## The problem
 
-### Context
+Most CLI tools lack a standardized way to handle "Dry Runs" or "Safety Checks".
+Implementing a `--dry-run` flag often leads to conditional logic scattered
+throughout the codebase (`if (!dryRun) ...`), which is prone to human error and
+makes the code harder to read.
 
-The `Context` object provided to `run()` includes:
+`clepo` solves this by abstracting the side effects into a `Context` object. The
+framework decides which implementation of the context (Real vs Dry) to inject
+based on the presence of the `--dry-run` flag. If a command is marked as
+`mutable`, the framework ensures that the safety guarantees are met.
 
-- `fs`: Abstracted File System (`readTextFile`, `writeTextFile`, `exists`,
-  `remove`, `mkdir`).
-- `shell`: Abstracted Shell runner.
-- `log`: Logger interface.
-- `env`: Environment variables.
-- `dryRun`: Boolean indicating if dry-run mode is active.
+## Support
+
+Whether you use this project, have learned something from it, or just like it,
+please consider supporting it by buying me a coffee, so I can dedicate more time
+on open-source projects like this :)
+
+<a href="https://buymeacoffee.com/orgrinrt" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
 ## License
 
-MPL-2.0
+> The project is licensed under the **Mozilla Public License 2.0**.
+
+`SPDX-License-Identifier: MPL-2.0`
+
+> You can check out the full license
+> [here](https://github.com/hiisi-digital/clepo/blob/main/LICENSE)
