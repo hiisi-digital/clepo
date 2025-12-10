@@ -19,7 +19,7 @@ behavior where possible, adapted for TypeScript idioms.
 | **Version Flag**          | `-V`, `--version`        | `-V`, `--version`           | ✅     | Auto-handled by the parser.                                                      |
 | **Environment Variables** | `env = "MY_VAR"`         | `env: "MY_VAR"`             | ✅     | Supported in `@Arg` config.                                                      |
 | **Default Values**        | `default_value = "x"`    | `default: 'x'`              | ✅     | Supported in `@Arg` config and reflected in help text.                           |
-| **Value Validation**      | `value_parser`           | `valueParser: fn`           | ✅     | Partial support via `valueParser` function and `type` property in `@Arg`.        |
+| **Value Validation**      | `value_parser`           | `valueParser: fn`           | ✅     | Support for custom functions and `number` parser complete.                       |
 | **Enumerated Values**     | `value_enum`             | `possibleValues`            | ✅     | Supported via `possibleValues` in `@Arg` and the `@ValueEnum` decorator.         |
 | **Collections**           | `Vec<T>`                 | `action: ArgAction.Append`  | ✅     | Supported via `action: ArgAction.Append`.                                        |
 | **Argument Groups**       | `ArgGroup`               | ❌                          | ❌     | Missing. Logic for "XOR" (mutually exclusive) or "AND" (required together) args. |
@@ -145,12 +145,13 @@ API.
 **Goal**: Replace `std/flags` and implement `ValueParser`.
 
 1. **Lexer**: Implement `Lexer` to handle `short` clusters (`-xvf`) and `long`
-   values correctly.
+   values correctly. ✅
 2. **ValueParser**:
-   - Add `valueParser` option to `@Arg`.
-   - Implement built-ins: `valueParser: 'number'`, `valueParser: 'file'`.
-   - Support custom functions: `(val: string) => T`.
-3. **Environment Variables**: Support `env` key in `@Arg`.
+   - Add `valueParser` option to `@Arg`. ✅
+   - Implement built-ins: `valueParser: 'number'`, `valueParser: 'file'`. ✅
+     (`number` only)
+   - Support custom functions: `(val: string) => T`. ✅
+3. **Environment Variables**: Support `env` key in `@Arg`. ✅
 
 ### Phase 3: Polish & Help (v0.4)
 
