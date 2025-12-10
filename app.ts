@@ -8,7 +8,7 @@ import {
   RealShell,
 } from "./context.ts";
 import { getCommandMetadata } from "./decorators.ts";
-import { type CommandMetadata } from "./types.ts";
+import type { CommandMetadata } from "./types.ts";
 
 export class Cli {
   private root: CommandMetadata;
