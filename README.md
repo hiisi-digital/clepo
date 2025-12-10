@@ -18,26 +18,26 @@
 ## Usage
 
 The `clepo` package provides a decorator-based interface for building
-command-line tools. It maps arguments to class properties and injects a context
-object for handling system interactions.
+command-line tools, closely mirroring the Rust `clap` derive API.
 
 ```typescript
-import { Arg, Cli, Command, Context, Option } from "jsr:@clepo/core";
+import { Arg, Cli, Context, Command } from "jsr:@clepo/core";
 
 @Command({
   name: "rm",
   about: "Remove a file",
-  mutable: true, // Enforces safety checks
+  version: "1.0.0",
 })
 class RemoveCmd {
-  @Option({ short: "f", help: "Force removal" })
+  @Arg({ short: "f", long: true, help: "Force removal" })
   force: boolean = false;
 
-  @Arg()
-  path: string;
+  // Arguments without short/long flags are positional by default
+  @Arg({ help: "File to remove", required: true })
+  path!: string;
 
   async run(ctx: Context) {
-    // ctx.fs automatically handles dry-run logic
+    // ctx.fs automatically handles dry-run logic when --dry-run is passed
     if (this.force || await ctx.helper.confirm(`Delete ${this.path}?`)) {
       await ctx.fs.remove(this.path);
       ctx.log.info(`Deleted ${this.path}`);
@@ -53,15 +53,15 @@ if (import.meta.main) {
 ## Features
 
 - **Declarative API**: Define commands, arguments, and options using TypeScript
-  decorators
-- **Command Hierarchy**: Support for nested subcommands to create structured
-  CLIs
+  decorators (`@Command`, `@Arg`).
+- **Command Hierarchy**: Support for nested subcommands via `@Subcommand` to
+  create structured CLIs.
 - **Context Injection**: Abstracts system interactions (filesystem, shell) for
-  testing and abstraction
+  testing and safety.
 - **Automatic Help**: Generates usage information and help text from command
-  metadata
-- **Dry-Run Support**: Optional enforcement of dry-run logic for commands marked
-  as mutable
+  metadata.
+- **Dry-Run Support**: Built-in `DryRunFS` and `DryRunShell` implementations
+  when `--dry-run` is detected.
 
 ## The problem
 
