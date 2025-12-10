@@ -39,6 +39,45 @@ _(Local source code available in `./docs_ref/clap/`)_
 | **Suggestions**           | "Did you mean...?"       | ❌                | **Missing**. Levenshtein distance for typos.                                         |                                                                                        |
 | **Custom Usage**          | `override_usage`         | ❌                | **Missing**. ability to override the auto-generated usage string.                    |                                                                                        |
 
+## Architecture & Concepts
+
+To achieve parity with `clap`, `clepo` should mirror key architectural components and concepts found in the Rust crate. This section highlights which parts of `clap` serve as inspiration for corresponding TypeScript implementations.
+
+### 1. The Builder Pattern
+`clap_builder` constructs the command graph and parsing rules. While `clepo` uses decorators for the high-level API, internally it must convert these into a robust `Command` definition structure similar to `clap_builder`.
+
+- **Source Reference**: `clap_builder/src/builder/command.rs` & `clap_builder/src/builder/arg.rs`
+- **Concept**: A `Command` (App) contains a list of `Arg`s, `ArgGroup`s, and subcommands.
+- **TS Implementation**: Our `CommandConfig` and `ArgConfig` interfaces in `types.ts` should evolve to match the richness of `clap::Command` and `clap::Arg`.
+
+### 2. Argument Actions
+In `clap`, `ArgAction` defines what happens when an argument is encountered (e.g., `Set`, `Append`, `SetTrue`, `Count`). `clepo` currently infers this from types, but explicit actions are needed for complex behaviors.
+
+- **Source Reference**: `clap_builder/src/builder/action.rs`
+- **Concept**: Decoupling the "what" (flag presence) from the "how" (storage logic).
+- **TS Implementation**: Add an `action` property to `ArgConfig` to support `count` (`-vvv`) and `append` (`--item a --item b`).
+
+### 3. The Lexer
+`clap` separates lexing (breaking strings into raw arguments) from parsing (matching args to rules). `std/flags` combines these somewhat rigidly.
+
+- **Source Reference**: `clap_lex/src/lib.rs`
+- **Concept**: A state-machine lexer that handles short flag clusters (`-xvf`), long flags with values (`--opt=val` vs `--opt val`), and positional delimiters (`--`).
+- **TS Implementation**: Eventually, replace `std/flags` with a custom `Lexer` class that mimics `clap_lex`'s robust tokenization, feeding into a `Parser` that applies the Command graph constraints.
+
+### 4. Validation & Parsing
+`clap` uses `ValueParser` to convert string inputs into typed values and validate them (e.g. `PathBuf`, `u32`, `enum`).
+
+- **Source Reference**: `clap_builder/src/builder/value_parser.rs` & `clap_builder/src/parser/validator.rs`
+- **Concept**: Arguments define how they should be parsed and validated.
+- **TS Implementation**: Introduce a `Validator` or `Parser` type in `ArgConfig` that accepts `(input: string) => Result<T, Error>`. This allows for reusable logic like "file must exist" or "integer range".
+
+### 5. Derive Macro Logic
+`clap_derive` is the "compiler" that translates struct attributes into `clap_builder` calls. `clepo`'s decorators perform the exact same role at runtime (via reflection).
+
+- **Source Reference**: `clap_derive/src/derives/parser.rs` & `clap_derive/src/derives/args.rs`
+- **Concept**: Recursively traversing fields to build the `Command` tree.
+- **TS Implementation**: The `decorators.ts` module is the direct equivalent. We should study `clap_derive` to ensure we handle things like `#[command(flatten)]` (reusing argument sets) which `clepo` doesn't yet support (mixin classes).
+
 ## Implementation Plan
 
 ### Phase 1: Robustness (v0.2)
