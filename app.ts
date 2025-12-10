@@ -1,4 +1,3 @@
-import { parse } from "std/flags/mod.ts";
 import {
   ConsoleLogger,
   type Context,
@@ -8,28 +7,40 @@ import {
   RealShell,
 } from "./context.ts";
 import { getCommandMetadata } from "./decorators.ts";
+import { HelpGenerator } from "./help.ts";
+import { Parser, ParserError } from "./parser.ts";
 import type { CommandMetadata } from "./types.ts";
 
+/**
+ * The main entry point for a clepo-based command-line application.
+ * This class orchestrates the parsing, context creation, and execution of commands.
+ */
 export class Cli {
   private root: CommandMetadata;
 
+  /**
+   * Creates a new CLI application instance.
+   * @param rootCommand The root command class, decorated with `@Command`.
+   */
   // deno-lint-ignore no-explicit-any
   constructor(rootCommand: new () => any) {
     this.root = getCommandMetadata(rootCommand);
   }
 
+  /**
+   * Parses the command-line arguments and executes the matched command.
+   * @param args The command-line arguments, typically from `Deno.args`.
+   */
   async run(args: string[]): Promise<void> {
-    // 1. Initial parse to find global flags like --dry-run
-    // We might want to parse strictly later, but for now we just look for flags
-    const parsed = parse(args, {
-      boolean: ["dry-run", "help"],
-      alias: { h: "help" },
-    });
-
-    const isDryRun = !!parsed["dry-run"];
-
-    // 2. Setup Context
     const logger = new ConsoleLogger();
+
+    // 1. Setup Context
+    // We scan for --dry-run manually for context setup before full parsing.
+    // This allows the Context to be configured correctly even if parsing fails later,
+    // though arguably dry-run should be part of the parsed flags.
+    // For v0.2, strictly checking the raw args array is sufficient.
+    const isDryRun = args.includes("--dry-run");
+
     const ctx: Context = {
       log: logger,
       env: Deno.env.toObject(),
@@ -43,131 +54,50 @@ export class Cli {
       },
     };
 
-    // 3. Resolve Command
-    let current = this.root;
-    const positionalArgs = parsed._.map(String);
-    let argIndex = 0;
-
-    while (argIndex < positionalArgs.length) {
-      const subName = positionalArgs[argIndex];
-      if (current.subcommands.has(subName)) {
-        current = current.subcommands.get(subName)!;
-        argIndex++;
-      } else {
-        break;
-      }
-    }
-
-    // 4. Show Help if requested
-    if (parsed.help) {
-      this.printHelp(current);
-      return;
-    }
-
-    // 5. Instantiate and Populate Command
-    const cmdInstance = new current.cls();
-
-    // Populate flags/options
-    for (const [propKey, config] of current.args) {
-      // deno-lint-ignore no-explicit-any
-      let value: any = undefined;
-
-      // Handle Flags (Options)
-      if (config.long || config.short) {
-        // Determine value from parsed args
-        // Priority: --long, -s, default
-        if (config.long && parsed[config.long] !== undefined) {
-          value = parsed[config.long];
-        } else if (config.short && parsed[config.short] !== undefined) {
-          value = parsed[config.short];
-        } else {
-          value = config.default;
-        }
-      } // Handle Positionals
-      else {
-        // If it's a positional argument, we take from remaining positionalArgs
-        // Note: strict positional mapping needs index logic.
-        // For now, we take the next available positional if we haven't consumed all.
-        // This is a naive implementation.
-        if (argIndex < positionalArgs.length) {
-          value = positionalArgs[argIndex];
-          argIndex++; // Consume
-        } else {
-          value = config.default;
-        }
-      }
-
-      // Type conversion (basic)
-      if (value !== undefined) {
-        if (config.type === "number") value = Number(value);
-        if (config.type === "boolean") value = Boolean(value);
-
-        // Inject into instance
-        // deno-lint-ignore no-explicit-any
-        (cmdInstance as any)[propKey] = value;
-      }
-
-      // Check required
-      if (config.required && value === undefined) {
-        console.error(`Error: Missing required argument: ${config.name}`);
-        Deno.exit(1);
-      }
-    }
-
-    // 6. Mutable Check
-    if (current.config.mutable && !isDryRun) {
-      // Implicit check? Or maybe we rely on the context.
-      // If the command is mutable but we didn't pass dry-run, we execute normally.
-      // If we did pass dry-run, we execute with dry-run context.
-      // But maybe we want to WARN if it is mutable?
-      // "Running in Mutable Mode"
-    }
-
-    // 7. Run
     try {
-      if (typeof cmdInstance.run === "function") {
-        await cmdInstance.run(ctx);
+      const parser = new Parser(this.root);
+      const { instance, meta, helpRequested, versionRequested } = parser.parse(
+        args,
+        ctx.env,
+      );
+
+      if (helpRequested) {
+        this.printHelp(meta);
+        return;
+      }
+
+      if (versionRequested) {
+        // Look for version in current command or root
+        const version = meta.config.version || this.root.config.version ||
+          "0.0.0";
+        console.log(`${meta.config.name} ${version}`);
+        return;
+      }
+
+      // Execute
+      if (typeof instance.run === "function") {
+        await instance.run(ctx);
       } else {
-        // If no run method, maybe show help?
-        this.printHelp(current);
+        // If no run method, and it has subcommands, show help
+        if (meta.subcommands.size > 0) {
+          this.printHelp(meta);
+        } else {
+          logger.warn(`Command '${meta.config.name}' has no run method.`);
+        }
       }
     } catch (e) {
-      logger.error(String(e));
-      Deno.exit(1);
+      if (e instanceof ParserError) {
+        logger.error(e.message);
+        console.log(`\nFor more information, try '--help'.`);
+        Deno.exit(1);
+      } else {
+        throw e;
+      }
     }
   }
 
   private printHelp(meta: CommandMetadata) {
-    console.log(`\nUsage: ${meta.config.name} [OPTIONS] [COMMAND]\n`);
-    if (meta.config.about) console.log(meta.config.about + "\n");
-
-    if (meta.subcommands.size > 0) {
-      console.log("Commands:");
-      // Deduplicate aliases
-      const seen = new Set<CommandMetadata>();
-      for (const sub of meta.subcommands.values()) {
-        if (seen.has(sub)) continue;
-        seen.add(sub);
-        console.log(
-          `  ${sub.config.name.padEnd(12)} ${sub.config.about || ""}`,
-        );
-      }
-      console.log("");
-    }
-
-    if (meta.args.size > 0) {
-      console.log("Arguments:");
-      for (const [, config] of meta.args) {
-        let flags = "";
-        if (config.short) flags += `-${config.short}`;
-        if (config.long) flags += (flags ? ", " : "") + `--${config.long}`;
-        if (!config.short && !config.long) {
-          flags = `[${config.name?.toUpperCase()}]`;
-        }
-
-        console.log(`  ${flags.padEnd(15)} ${config.help || ""}`);
-      }
-      console.log("");
-    }
+    const helpText = new HelpGenerator(meta).generate();
+    console.log(helpText);
   }
 }
