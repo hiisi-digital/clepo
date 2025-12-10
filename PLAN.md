@@ -9,8 +9,9 @@ gap for `clepo`.
 - [Clap Concepts](https://docs.rs/clap/latest/clap/_concepts/index.html)
 - [Clap FAQ](https://docs.rs/clap/latest/clap/_faq/index.html)
 - [Clap Cookbook](https://docs.rs/clap/latest/clap/_cookbook/index.html)
+- [Clap GitHub Repository](https://github.com/clap-rs/clap)
 
-_(Local copies available in `./docs_ref/`)_
+_(Local source code available in `./docs_ref/clap/`)_
 
 ## Feature Matrix
 
@@ -81,9 +82,8 @@ Focus on distribution and integration features.
 
 ## Technical Debt / Refactor
 
-- **Parser Backend**: Currently using `std/flags`. Evaluate if this limits
-  complex group logic (XOR/AND). Consider a custom parser or wrapping
-  `cliffy/flags` if `std` proves insufficient for Phase 2.
+- **Parser Backend**: Currently using `std/flags`. While simple, it limits complex group logic (XOR/AND) and precise token handling (e.g. distinguishing `-ovalue` from `-o value` in some contexts). 
+  - *Recommendation*: Study `clap_lex` (in `./docs_ref/clap/clap_lex`) for how a robust lexer is implemented, and consider implementing a similar state-machine based parser in TypeScript if `std/flags` becomes a bottleneck for Phase 2 features. WASM bindings for `clap` itself are deemed too heavy/complex for this project's goals.
 - **Testing**: Add unit tests for the `Cli` runner specifically covering edge
   cases (e.g., `--flag value`, `--flag=value`, `-f value`, clustered shorts
   `-xvf`).
