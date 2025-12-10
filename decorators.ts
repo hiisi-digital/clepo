@@ -1,7 +1,7 @@
-import {
-  type ArgConfig,
-  type CommandConfig,
-  type CommandMetadata,
+import type {
+  ArgConfig,
+  CommandConfig,
+  CommandMetadata,
 } from "./types.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -55,6 +55,7 @@ export function Command(config: CommandConfig): ClassDecorator {
       // Pull args from metadata if any
       // deno-lint-ignore no-explicit-any
       if (context.metadata && (context.metadata as any).loruArgs) {
+        // deno-lint-ignore no-explicit-any
         const args = (context.metadata as any).loruArgs as Map<
           string,
           ArgConfig
