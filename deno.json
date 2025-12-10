@@ -6,7 +6,7 @@
     "std/": "https://deno.land/std@0.208.0/"
   },
   "compilerOptions": {
-      "experimentalDecorators": true
+    "experimentalDecorators": true
   },
   "fmt": {
     "indentWidth": 2,
