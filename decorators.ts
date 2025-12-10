@@ -1,8 +1,4 @@
-import type {
-  ArgConfig,
-  CommandConfig,
-  CommandMetadata,
-} from "./types.ts";
+import type { ArgConfig, CommandConfig, CommandMetadata } from "./types.ts";
 
 // deno-lint-ignore no-explicit-any
 const REGISTRY = new Map<any, CommandMetadata>();
