@@ -1,0 +1,15 @@
+{
+  "name": "@clepo/core",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "std/": "https://deno.land/std@0.208.0/"
+  },
+  "compilerOptions": {
+      "experimentalDecorators": true
+  },
+  "fmt": {
+    "indentWidth": 2,
+    "singleQuote": false
+  }
+}
