@@ -16,7 +16,10 @@ export interface FS {
 }
 
 export interface Shell {
-  run(cmd: string[], options?: Deno.CommandOptions): Promise<Deno.CommandOutput>;
+  run(
+    cmd: string[],
+    options?: Deno.CommandOptions,
+  ): Promise<Deno.CommandOutput>;
 }
 
 export interface Context {
@@ -66,31 +69,36 @@ export class DryRunFS implements FS {
   constructor(private logger: Log) {}
 
   readTextFile(path: string): Promise<string> {
-    return Deno.readTextFile(path).catch(e => {
-        this.logger.warn(`[DryRun] File not found on disk: ${path}`);
-        return "";
+    return Deno.readTextFile(path).catch((e) => {
+      this.logger.warn(`[DryRun] File not found on disk: ${path}`);
+      return "";
     });
   }
-  
+
   async writeTextFile(path: string, content: string): Promise<void> {
-    this.logger.info(`[DryRun] Would write to "${path}" (${content.length} bytes)`);
+    this.logger.info(
+      `[DryRun] Would write to "${path}" (${content.length} bytes)`,
+    );
   }
-  
+
   async exists(path: string): Promise<boolean> {
     return Deno.stat(path).then(() => true).catch(() => false);
   }
-  
+
   async mkdir(path: string, options?: Deno.MkdirOptions): Promise<void> {
     this.logger.info(`[DryRun] Would create directory "${path}"`);
   }
-  
+
   async remove(path: string, options?: Deno.RemoveOptions): Promise<void> {
     this.logger.info(`[DryRun] Would remove "${path}"`);
   }
 }
 
 export class RealShell implements Shell {
-  async run(cmd: string[], options?: Deno.CommandOptions): Promise<Deno.CommandOutput> {
+  async run(
+    cmd: string[],
+    options?: Deno.CommandOptions,
+  ): Promise<Deno.CommandOutput> {
     const command = new Deno.Command(cmd[0], {
       args: cmd.slice(1),
       ...options,
@@ -102,7 +110,10 @@ export class RealShell implements Shell {
 export class DryRunShell implements Shell {
   constructor(private logger: Log) {}
 
-  async run(cmd: string[], options?: Deno.CommandOptions): Promise<Deno.CommandOutput> {
+  async run(
+    cmd: string[],
+    options?: Deno.CommandOptions,
+  ): Promise<Deno.CommandOutput> {
     this.logger.info(`[DryRun] Would execute command: ${cmd.join(" ")}`);
     return {
       code: 0,
