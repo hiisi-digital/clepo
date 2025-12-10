@@ -7,16 +7,15 @@
 [![GitHub Issues](https://img.shields.io/github/issues/hiisi-digital/clepo.svg)](https://github.com/hiisi-digital/clepo/issues)
 ![License](https://img.shields.io/github/license/hiisi-digital/clepo?color=%23009689)
 
-> A robust CLI framework for Deno that enforces safe dry-runs via dependency
-> injection.
+> A clap-inspired CLI framework for Deno focusing on ergonomics and declarative command definition.
 
 </div>
 
+> **⚠️ Work in Progress**: This library is currently under active development and the API is subject to change. Use with caution.
+
 ## Usage
 
-The `clepo` package provides a decorator-based interface for building
-command-line tools. It maps arguments to class properties and injects a context
-object for handling side effects safely.
+The `clepo` package provides a decorator-based interface for building command-line tools. It maps arguments to class properties and injects a context object for handling system interactions.
 
 ```typescript
 import { Arg, Cli, Command, Context, Option } from "jsr:@clepo/core";
@@ -49,32 +48,23 @@ if (import.meta.main) {
 
 ## Features
 
-- **Decorator-based Definition**: declarative mapping of CLI arguments to class
-  properties
-- **Dry-Run Safety**: built-in `mutable` flag enforces `dry-run` checks
-- **Dependency Injection**: abstracts filesystem and shell operations
-  - _Real Mode_: performs actual I/O operations
-  - _Dry Mode_: logs intended operations without side effects
-- **Subcommands**: supports nested command structures via recursion
-- **Auto-Help**: generates usage instructions from metadata
+- **Declarative API**: Define commands, arguments, and options using TypeScript decorators
+- **Command Hierarchy**: Support for nested subcommands to create structured CLIs
+- **Context Injection**: Abstracts system interactions (filesystem, shell) for testing and abstraction
+- **Automatic Help**: Generates usage information and help text from command metadata
+- **Dry-Run Support**: Optional enforcement of dry-run logic for commands marked as mutable
 
 ## The problem
 
-Most CLI tools lack a standardized way to handle "Dry Runs" or "Safety Checks".
-Implementing a `--dry-run` flag often leads to conditional logic scattered
-throughout the codebase (`if (!dryRun) ...`), which is prone to human error and
-makes the code harder to read.
+Building CLI tools often involves significant boilerplate code for argument parsing, validation, and help text generation. Without a structured framework, tools can become inconsistent in behavior and difficult to maintain.
 
-`clepo` solves this by abstracting the side effects into a `Context` object. The
-framework decides which implementation of the context (Real vs Dry) to inject
-based on the presence of the `--dry-run` flag. If a command is marked as
-`mutable`, the framework ensures that the safety guarantees are met.
+Additionally, implementing robust safety mechanisms like "dry runs" is often an afterthought, leading to scattered conditional logic (`if (!dryRun) ...`) that is prone to errors.
+
+`clepo` aims to address these issues by providing a consistent, ergonomic API inspired by Rust's `clap`. It allows developers to define the CLI interface declaratively, ensuring consistency and reducing boilerplate, while also offering built-in patterns for handling side effects.
 
 ## Support
 
-Whether you use this project, have learned something from it, or just like it,
-please consider supporting it by buying me a coffee, so I can dedicate more time
-on open-source projects like this :)
+Whether you use this project, have learned something from it, or just like it, please consider supporting it by buying me a coffee, so I can dedicate more time on open-source projects like this :)
 
 <a href="https://buymeacoffee.com/orgrinrt" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
@@ -84,5 +74,4 @@ on open-source projects like this :)
 
 `SPDX-License-Identifier: MPL-2.0`
 
-> You can check out the full license
-> [here](https://github.com/hiisi-digital/clepo/blob/main/LICENSE)
+> You can check out the full license [here](https://github.com/hiisi-digital/clepo/blob/main/LICENSE)
