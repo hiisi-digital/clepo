@@ -1,4 +1,4 @@
-import { type Helper } from "./types.ts";
+import type { Helper } from "./types.ts";
 
 export interface Log {
   info(msg: string, ...args: unknown[]): void;
@@ -32,18 +32,20 @@ export interface Context {
   helper: Helper;
 }
 
+// --- Implementations ---
+
 export class ConsoleLogger implements Log {
   info(msg: string, ...args: unknown[]) {
-    console.log(`[INFO] ${msg}`, ...args);
+    console.log(`%c[INFO] ${msg}`, "color: blue", ...args);
   }
   warn(msg: string, ...args: unknown[]) {
-    console.warn(`[WARN] ${msg}`, ...args);
+    console.warn(`%c[WARN] ${msg}`, "color: yellow", ...args);
   }
   error(msg: string, ...args: unknown[]) {
-    console.error(`[ERROR] ${msg}`, ...args);
+    console.error(`%c[ERROR] ${msg}`, "color: red", ...args);
   }
   debug(msg: string, ...args: unknown[]) {
-    console.debug(`[DEBUG] ${msg}`, ...args);
+    console.debug(`%c[DEBUG] ${msg}`, "color: gray", ...args);
   }
 }
 
@@ -69,28 +71,37 @@ export class DryRunFS implements FS {
   constructor(private logger: Log) {}
 
   readTextFile(path: string): Promise<string> {
-    return Deno.readTextFile(path).catch((e) => {
-      this.logger.warn(`[DryRun] File not found on disk: ${path}`);
+    // In a real dry-run, reading is allowed.
+    // However, if we are modifying a file we just "created" in memory,
+    // we might need a virtual FS layer. For now, we read from disk.
+    return Deno.readTextFile(path).catch((_e) => {
+      this.logger.warn(
+        `[DryRun] File not found on disk (might be created in this run): ${path}`,
+      );
       return "";
     });
   }
 
+  // deno-lint-ignore require-await
   async writeTextFile(path: string, content: string): Promise<void> {
     this.logger.info(
-      `[DryRun] Would write to "${path}" (${content.length} bytes)`,
+      `[DryRun] Would write to '${path}' (${content.length} bytes)`,
     );
   }
 
   async exists(path: string): Promise<boolean> {
-    return Deno.stat(path).then(() => true).catch(() => false);
+    // Fallback to disk check
+    return await Deno.stat(path).then(() => true).catch(() => false);
   }
 
+  // deno-lint-ignore require-await
   async mkdir(path: string, options?: Deno.MkdirOptions): Promise<void> {
-    this.logger.info(`[DryRun] Would create directory "${path}"`);
+    this.logger.info(`[DryRun] Would create directory '${path}'`, options);
   }
 
+  // deno-lint-ignore require-await
   async remove(path: string, options?: Deno.RemoveOptions): Promise<void> {
-    this.logger.info(`[DryRun] Would remove "${path}"`);
+    this.logger.info(`[DryRun] Would remove '${path}'`, options);
   }
 }
 
@@ -110,11 +121,16 @@ export class RealShell implements Shell {
 export class DryRunShell implements Shell {
   constructor(private logger: Log) {}
 
+  // deno-lint-ignore require-await
   async run(
     cmd: string[],
     options?: Deno.CommandOptions,
   ): Promise<Deno.CommandOutput> {
-    this.logger.info(`[DryRun] Would execute command: ${cmd.join(" ")}`);
+    this.logger.info(
+      `[DryRun] Would execute command: ${cmd.join(" ")}`,
+      options,
+    );
+    // Return a fake success
     return {
       code: 0,
       stdout: new Uint8Array(),

@@ -4,8 +4,13 @@ import {
   type CommandMetadata,
 } from "./types.ts";
 
+// deno-lint-ignore no-explicit-any
 const REGISTRY = new Map<any, CommandMetadata>();
 
+/**
+ * Get or create metadata for a command class constructor.
+ */
+// deno-lint-ignore no-explicit-any
 export function getCommandMetadata(target: any): CommandMetadata {
   let meta = REGISTRY.get(target);
   if (!meta) {
@@ -36,7 +41,11 @@ function handleSubcommands(config: CommandConfig, meta: CommandMetadata) {
   }
 }
 
-export function Command(config: CommandConfig) {
+/**
+ * Class decorator to mark a class as a Command.
+ */
+export function Command(config: CommandConfig): ClassDecorator {
+  // deno-lint-ignore no-explicit-any
   return function (target: any, context?: any) {
     // Standard Decorator check
     if (context && typeof context === "object" && context.kind === "class") {
@@ -44,6 +53,7 @@ export function Command(config: CommandConfig) {
       meta.config = { ...meta.config, ...config };
 
       // Pull args from metadata if any
+      // deno-lint-ignore no-explicit-any
       if (context.metadata && (context.metadata as any).loruArgs) {
         const args = (context.metadata as any).loruArgs as Map<
           string,
@@ -64,7 +74,11 @@ export function Command(config: CommandConfig) {
   };
 }
 
-export function Option(config: ArgConfig = {}) {
+/**
+ * Property decorator for an Option (flag).
+ */
+export function Option(config: ArgConfig = {}): PropertyDecorator {
+  // deno-lint-ignore no-explicit-any
   return function (target: any, propertyKeyOrContext: any) {
     // Standard: target is undefined for fields
     if (
@@ -81,9 +95,12 @@ export function Option(config: ArgConfig = {}) {
           // Deno should provide this, but if not we might be in trouble without polyfill
           // We can try to shim it locally if needed, but cant assign to readonly context.metadata usually
         }
-      } catch (e) {}
+      } catch (_e) {
+        // Ignore error
+      }
 
       const metaObj = context.metadata || {};
+      // deno-lint-ignore no-explicit-any
       const args = metaObj.loruArgs || ((metaObj as any).loruArgs = new Map());
 
       if (!config.name) config.name = name;
@@ -109,7 +126,11 @@ export function Option(config: ArgConfig = {}) {
   };
 }
 
-export function Arg(config: ArgConfig = {}) {
+/**
+ * Property decorator for a Positional argument.
+ */
+export function Arg(config: ArgConfig = {}): PropertyDecorator {
+  // deno-lint-ignore no-explicit-any
   return function (target: any, propertyKeyOrContext: any) {
     if (
       typeof target === "undefined" &&
@@ -120,6 +141,7 @@ export function Arg(config: ArgConfig = {}) {
       const name = String(context.name);
 
       const metaObj = context.metadata || {};
+      // deno-lint-ignore no-explicit-any
       const args = metaObj.loruArgs || ((metaObj as any).loruArgs = new Map());
 
       if (!config.name) config.name = name;
