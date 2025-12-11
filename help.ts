@@ -177,6 +177,9 @@ export class HelpGenerator {
     const options: Arg[] = [];
 
     for (const arg of this.command.args.values()) {
+      // Skip hidden arguments - they're internal and shouldn't appear in help
+      if (arg.hide) continue;
+
       if (!arg.short && !arg.long) {
         positionals.push(arg);
       } else {

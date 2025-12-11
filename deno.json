@@ -1,6 +1,6 @@
 {
   "name": "@loru/clepo",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "exports": "./mod.ts",
   "compilerOptions": {
     "strict": true,
@@ -11,7 +11,7 @@
     "@std/fmt": "jsr:@std/fmt@^1.0.0",
     "@std/assert": "jsr:@std/assert@^1.0.0",
     "@std/testing": "jsr:@std/testing@^1.0.0",
-    "reflect-metadata": "https://deno.land/x/reflection@0.0.2/mod.ts"
+    "reflect-metadata": "npm:reflect-metadata@^0.2.2"
   },
   "lint": {
     "include": ["*.ts", "tests/"],
@@ -79,6 +79,7 @@
       "parser.ts",
       "reflect.ts",
       "types.ts",
+      "util.ts",
       "README.md",
       "LICENSE"
     ],

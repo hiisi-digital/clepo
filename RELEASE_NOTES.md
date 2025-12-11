@@ -1,5 +1,160 @@
 # clepo Release Notes
 
+## v0.5.0: Clap-like Subcommands API
+
+This release introduces a new `Subcommands()` factory function that provides a
+clap-like ergonomic API for defining subcommand enums, with automatic type
+inference.
+
+### New Features
+
+- **`Subcommands()` Factory**: A new function that creates a subcommand "enum"
+  from a list of command classes. The type is automatically inferred as a union.
+
+```typescript
+// Define subcommand classes
+@Command({ about: "Clone a repository" })
+class CloneCmd {
+  @Arg({ required: true })
+  remote!: string;
+  async run() {/* ... */}
+}
+
+@Command({ about: "Show diff" })
+class DiffCmd {
+  @Arg({ long: "base" })
+  base?: string;
+  async run() {/* ... */}
+}
+
+// Create the "enum" - just like Rust's #[derive(Subcommand)] enum!
+const Commands = Subcommands(CloneCmd, DiffCmd);
+
+// Use in main CLI - type is automatically CloneCmd | DiffCmd
+@Command({ name: "git", version: "1.0.0" })
+class GitCli {
+  command = Commands; // That's it!
+  async run() {/* ... */}
+}
+```
+
+- **Auto-detection**: Properties initialized with `Subcommands()` are
+  automatically detected - no `@Subcommand` decorator required!
+
+- **Multiple Usage Patterns**: Three ways to use the new API:
+  1. Auto-detection: `command = Commands;`
+  2. Explicit decorator: `@Subcommand(Commands) command = Commands;`
+  3. Empty decorator: `@Subcommand() command = Commands;`
+
+- **Backward Compatibility**: The original array-based `@Subcommand([...])` API
+  continues to work unchanged.
+
+### Comparison to Rust clap
+
+| Rust clap                       | TypeScript clepo                            |
+| :------------------------------ | :------------------------------------------ |
+| `enum Commands { Clone, Diff }` | `const Commands = Subcommands(Clone, Diff)` |
+| `command: Commands`             | `command = Commands`                        |
+
+### API Changes
+
+- **Renamed `CommandDecorator` to `Command`**: The decorator is now simply
+  `@Command`, which is cleaner and more intuitive.
+- **Renamed `Command` to `CommandBuilder`**: The builder API class is now
+  `CommandBuilder` to avoid naming conflicts with the decorator.
+
+### New Exports
+
+- `Command`: The class decorator (renamed from `CommandDecorator`)
+- `CommandBuilder`: The builder class (renamed from `Command`)
+- `Subcommands`: The factory function for creating subcommand enums
+- `SubcommandsMarker`: Internal marker type (for advanced use)
+- `SubcommandsResult`: The branded return type of `Subcommands()`
+
+### New Error Kinds
+
+- `ErrorKind.MissingSubcommand`: When a required subcommand is not provided
+- `ErrorKind.ArgumentConflict`: When mutually exclusive arguments are used
+
+### Improvements
+
+- **Expanded Test Suite**: Increased from 65 to 72 integration tests covering
+  all new `Subcommands()` patterns.
+- **Updated Documentation**: README updated with comprehensive examples of the
+  new API.
+- **Improved Error Messages**: All error messages now include helpful context,
+  usage hints, and suggestions where applicable.
+
+### Internal
+
+- New symbol-based marker system for runtime detection of subcommand metadata
+- `ClepoError.format()` method for user-friendly error display
+- `ClepoError.kindName()` method for debugging
+- All 72 tests pass
+- Zero lint errors
+
+---
+
+## v0.4.2: Stabilization
+
+This release completes the v0.4.x stabilization phase with new value parsers,
+typo suggestions, and the ability to hide internal arguments.
+
+### New Features
+
+- **Boolish Value Parser**: Accepts flexible boolean inputs (yes/no, on/off,
+  true/false, 1/0). Use `valueParser: "boolish"` in your argument config.
+
+```typescript
+debug = false;
+// Accepts: --debug yes, --debug on, --debug 1, --debug true
+```
+
+- **Ranged Integer Parser**: Validates integers within a specified range
+  (inclusive). Use `valueParser: { ranged: [min, max] }`.
+
+```typescript
+port = 8080;
+// Rejects values outside 1-65535
+```
+
+- **Hide Option**: Arguments can be hidden from help output while still being
+  parseable. Useful for internal or deprecated flags.
+
+```typescript
+internalDebug = false;
+// Won't appear in --help, but still works
+```
+
+- **Typo Suggestions**: When users provide an unknown argument, clepo now
+  suggests similar options using Levenshtein distance.
+
+```
+$ myapp --verbos
+error: Found argument '--verbos' which wasn't expected.
+
+    tip: a similar argument exists: '--verbose'
+
+For more information, try '--help'.
+```
+
+### Improvements
+
+- **Expanded Test Suite**: Increased from 47 to 65 integration tests covering
+  all new features.
+- **Utility Module**: Added `util.ts` with Levenshtein distance functions that
+  can be reused.
+- **Updated Documentation**: README overhauled with low-ego, professional tone
+  and comprehensive inline-commented examples.
+
+### Internal
+
+- New exports: `parseBoolish`, `createRangedParser`, `BuiltinValueParser` type
+- All 65 tests pass
+- Zero lint errors
+
+---
+
 ## v0.4.1: Code Quality & TC39 Future-Proofing
 
 This release focuses on code quality improvements and preparing for the eventual

@@ -1,17 +1,18 @@
 // loru/packages/clepo/tests/integration_test.ts
 
-import { assertEquals, assertInstanceOf, assertThrows } from "@std/assert";
+import { assertEquals, assertInstanceOf, assertMatch, assertThrows } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import { Arg as ArgClass, ArgAction } from "../arg.ts";
-import { Command, CommandSettings } from "../command.ts";
-import { Arg, Command as CommandDecorator, getCommand, Subcommand } from "../decorators.ts";
+import { Arg as ArgClass, ArgAction, createRangedParser, parseBoolish } from "../arg.ts";
+import { Command as CommandBuilder, CommandSettings } from "../command.ts";
+import { Arg, Command, getCommand, Subcommand, Subcommands } from "../decorators.ts";
 import { ClepoError, ErrorKind } from "../error.ts";
 import { HelpGenerator } from "../help.ts";
 import { Parser } from "../parser.ts";
+import { findClosestMatch, levenshteinDistance } from "../util.ts";
 
 // --- Decorated Classes for Testing ---
 
-@CommandDecorator({
+@Command({
   name: "add",
   about: "Add file contents to the index",
 })
@@ -34,7 +35,7 @@ class AddCmd {
   }
 }
 
-@CommandDecorator({
+@Command({
   name: "git",
   version: "1.0.0",
   about: "The stupid content tracker",
@@ -58,7 +59,7 @@ class GitCli {
 }
 
 // Simple command for testing help/version
-@CommandDecorator({
+@Command({
   name: "simple",
   version: "2.0.0",
   about: "A simple test command",
@@ -87,7 +88,7 @@ class SimpleCmd {
 }
 
 // Command without version (should not have -V flag)
-@CommandDecorator({
+@Command({
   name: "no-version",
   about: "A command without version",
 })
@@ -101,7 +102,7 @@ class NoVersionCmd {
 }
 
 // Command with env var support
-@CommandDecorator({
+@Command({
   name: "env-test",
   version: "1.0.0",
 })
@@ -126,7 +127,7 @@ class EnvTestCmd {
 }
 
 // Command with value parser
-@CommandDecorator({
+@Command({
   name: "parser-test",
   version: "1.0.0",
 })
@@ -155,7 +156,7 @@ class ParserTestCmd {
 }
 
 // Command with possible values
-@CommandDecorator({
+@Command({
   name: "enum-test",
   version: "1.0.0",
 })
@@ -173,7 +174,7 @@ class EnumTestCmd {
 }
 
 // Command to test type inference with explicit type annotations
-@CommandDecorator({
+@Command({
   name: "type-infer-test",
   version: "1.0.0",
 })
@@ -253,7 +254,7 @@ describe("Clepo Integration Tests", () => {
 
     it("should parse a command mirroring the decorator setup", () => {
       // Create fresh commands for each test to avoid finalization issues
-      const freshAddCommand = new Command("add")
+      const freshAddCommand = new CommandBuilder("add")
         .setAbout("Add file contents to the index")
         .addArg(
           new ArgClass({
@@ -273,7 +274,7 @@ describe("Clepo Integration Tests", () => {
         );
       freshAddCommand.cls = AddBuilder;
 
-      const freshGitCommand = new Command("git")
+      const freshGitCommand = new CommandBuilder("git")
         .setVersion("1.0.0")
         .setAbout("The stupid content tracker")
         .addArg(
@@ -648,7 +649,7 @@ describe("Clepo Integration Tests", () => {
     it("should use explicit type config over reflection (TC39 future-proofing)", () => {
       // This test verifies that explicit type configuration works,
       // which is essential for TC39 decorators that don't support emitDecoratorMetadata
-      @CommandDecorator({
+      @Command({
         name: "explicit-type-test",
         version: "1.0.0",
       })
@@ -695,7 +696,7 @@ describe("Clepo Integration Tests", () => {
   describe("Escape Sequence (--)", () => {
     it("should treat arguments after -- as positional values", () => {
       // Create a command that takes positional args
-      @CommandDecorator({
+      @Command({
         name: "echo-cmd",
         version: "1.0.0",
       })
@@ -729,7 +730,7 @@ describe("Clepo Integration Tests", () => {
         }
       }
 
-      const subCmd = new Command("sub");
+      const subCmd = new CommandBuilder("sub");
       subCmd.cls = SubCmd;
 
       class ParentBuilder {
@@ -739,7 +740,7 @@ describe("Clepo Integration Tests", () => {
         }
       }
 
-      const parentCmd = new Command("parent")
+      const parentCmd = new CommandBuilder("parent")
         .setting(CommandSettings.SubcommandRequired)
         .addSubcommand(subCmd);
       parentCmd.cls = ParentBuilder;
@@ -753,6 +754,425 @@ describe("Clepo Integration Tests", () => {
         ClepoError,
         "requires a subcommand",
       );
+    });
+  });
+
+  describe("Boolish Value Parser", () => {
+    it("should accept truthy boolish values", () => {
+      assertEquals(parseBoolish("true"), true);
+      assertEquals(parseBoolish("TRUE"), true);
+      assertEquals(parseBoolish("yes"), true);
+      assertEquals(parseBoolish("YES"), true);
+      assertEquals(parseBoolish("on"), true);
+      assertEquals(parseBoolish("ON"), true);
+      assertEquals(parseBoolish("1"), true);
+    });
+
+    it("should accept falsy boolish values", () => {
+      assertEquals(parseBoolish("false"), false);
+      assertEquals(parseBoolish("FALSE"), false);
+      assertEquals(parseBoolish("no"), false);
+      assertEquals(parseBoolish("NO"), false);
+      assertEquals(parseBoolish("off"), false);
+      assertEquals(parseBoolish("OFF"), false);
+      assertEquals(parseBoolish("0"), false);
+    });
+
+    it("should reject invalid boolish values", () => {
+      assertThrows(() => parseBoolish("maybe"), Error);
+      assertThrows(() => parseBoolish("nope"), Error);
+      assertThrows(() => parseBoolish(""), Error);
+    });
+
+    it("should parse boolish values via decorator", () => {
+      @Command({ name: "boolish-test", version: "1.0.0" })
+      class BoolishCmd {
+        @Arg({ long: "debug", valueParser: "boolish" })
+        debug = false;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(BoolishCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result1 = parser.parse(["--debug", "yes"], {});
+      assertEquals((result1.instance as BoolishCmd).debug, true);
+
+      const result2 = parser.parse(["--debug", "no"], {});
+      assertEquals((result2.instance as BoolishCmd).debug, false);
+
+      const result3 = parser.parse(["--debug", "on"], {});
+      assertEquals((result3.instance as BoolishCmd).debug, true);
+    });
+  });
+
+  describe("Ranged Value Parser", () => {
+    it("should accept values within range", () => {
+      const ranged = createRangedParser(1, 100);
+      assertEquals(ranged("1"), 1);
+      assertEquals(ranged("50"), 50);
+      assertEquals(ranged("100"), 100);
+    });
+
+    it("should reject values outside range", () => {
+      const ranged = createRangedParser(1, 100);
+      assertThrows(() => ranged("0"), Error, "out of range");
+      assertThrows(() => ranged("101"), Error, "out of range");
+      assertThrows(() => ranged("-5"), Error, "out of range");
+    });
+
+    it("should reject non-integer values", () => {
+      const ranged = createRangedParser(1, 100);
+      assertThrows(() => ranged("5.5"), Error, "expected an integer");
+      assertThrows(() => ranged("abc"), Error, "expected a number");
+    });
+
+    it("should parse ranged values via decorator", () => {
+      @Command({ name: "ranged-test", version: "1.0.0" })
+      class RangedCmd {
+        @Arg({ long: "port", valueParser: { ranged: [1, 65535] } })
+        port = 8080;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(RangedCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result = parser.parse(["--port", "3000"], {});
+      assertEquals((result.instance as RangedCmd).port, 3000);
+
+      assertThrows(
+        () => parser.parse(["--port", "70000"], {}),
+        ClepoError,
+        "out of range",
+      );
+    });
+  });
+
+  describe("Hide Option", () => {
+    it("should hide arguments from help output", () => {
+      @Command({ name: "hide-test", version: "1.0.0" })
+      class HideCmd {
+        @Arg({ long: "visible", help: "A visible option" })
+        visible = false;
+
+        @Arg({ long: "internal", help: "An internal option", hide: true })
+        internal = false;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(HideCmd);
+      cmd.finalize();
+      const help = new HelpGenerator(cmd).generate();
+
+      // Visible option should appear in help
+      assertMatch(help, /--visible/);
+      assertMatch(help, /A visible option/);
+
+      // Hidden option should NOT appear in help
+      assertEquals(help.includes("--internal"), false);
+      assertEquals(help.includes("An internal option"), false);
+    });
+
+    it("should still parse hidden arguments", () => {
+      @Command({ name: "hide-parse-test", version: "1.0.0" })
+      class HideParseCmd {
+        // Explicitly declare boolean type for proper SetTrue action inference
+        @Arg({ long: "internal", hide: true })
+        internal: boolean = false;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(HideParseCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result = parser.parse(["--internal"], {});
+      assertEquals((result.instance as HideParseCmd).internal, true);
+    });
+  });
+
+  describe("Subcommands() Factory API", () => {
+    // --- Subcommand classes for testing ---
+    @Command({
+      name: "clone",
+      about: "Clone a repository",
+    })
+    class CloneCmd {
+      @Arg({ required: true, help: "Remote URL" })
+      remote!: string;
+
+      run(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    @Command({
+      name: "diff",
+      about: "Show changes between commits",
+    })
+    class DiffCmd {
+      @Arg({ long: "base", help: "Base commit" })
+      base?: string;
+
+      @Arg({ long: "head", help: "Head commit" })
+      head?: string;
+
+      run(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    it("should work with Subcommands() and explicit @Subcommand decorator", () => {
+      const Commands = Subcommands(CloneCmd, DiffCmd);
+
+      @Command({ name: "git-explicit", version: "1.0.0" })
+      class GitExplicit {
+        @Arg({ short: "v", long: "verbose", action: ArgAction.SetTrue })
+        verbose = false;
+
+        @Subcommand(Commands)
+        command = Commands;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitExplicit);
+      const parser = new Parser(gitCommand);
+
+      const args = ["clone", "https://github.com/example/repo"];
+      const result = parser.parse(args, {});
+
+      const git = result.instance as GitExplicit;
+      assertEquals(git.verbose, false);
+
+      const clone = git.command as CloneCmd;
+      assertInstanceOf(clone, CloneCmd);
+      assertEquals(clone.remote, "https://github.com/example/repo");
+    });
+
+    it("should work with Subcommands() and auto-detection (no decorator)", () => {
+      const Commands = Subcommands(CloneCmd, DiffCmd);
+
+      @Command({ name: "git-auto", version: "1.0.0" })
+      class GitAuto {
+        @Arg({ short: "v", long: "verbose", action: ArgAction.SetTrue })
+        verbose = false;
+
+        // No @Subcommand decorator - auto-detected!
+        command = Commands;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitAuto);
+      const parser = new Parser(gitCommand);
+
+      const args = ["--verbose", "diff", "--base", "main"];
+      const result = parser.parse(args, {});
+
+      const git = result.instance as GitAuto;
+      assertEquals(git.verbose, true);
+
+      const diff = git.command as DiffCmd;
+      assertInstanceOf(diff, DiffCmd);
+      assertEquals(diff.base, "main");
+    });
+
+    it("should work with @Subcommand() empty decorator and Subcommands()", () => {
+      const Commands = Subcommands(CloneCmd, DiffCmd);
+
+      @Command({ name: "git-empty-decorator", version: "1.0.0" })
+      class GitEmptyDecorator {
+        @Subcommand()
+        command = Commands;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitEmptyDecorator);
+      const parser = new Parser(gitCommand);
+
+      const args = ["clone", "git@github.com:user/repo.git"];
+      const result = parser.parse(args, {});
+
+      const git = result.instance as GitEmptyDecorator;
+      const clone = git.command as CloneCmd;
+      assertInstanceOf(clone, CloneCmd);
+      assertEquals(clone.remote, "git@github.com:user/repo.git");
+    });
+
+    it("should properly type the union result from Subcommands()", () => {
+      const Commands = Subcommands(CloneCmd, DiffCmd);
+
+      @Command({ name: "git-typed", version: "1.0.0" })
+      class GitTyped {
+        command = Commands;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitTyped);
+      const parser = new Parser(gitCommand);
+
+      // Test CloneCmd path
+      const cloneResult = parser.parse(["clone", "url"], {});
+      const gitWithClone = cloneResult.instance as GitTyped;
+      assertInstanceOf(gitWithClone.command, CloneCmd);
+
+      // Test DiffCmd path
+      const diffResult = parser.parse(["diff"], {});
+      const gitWithDiff = diffResult.instance as GitTyped;
+      assertInstanceOf(gitWithDiff.command, DiffCmd);
+    });
+
+    it("should work alongside global args with Subcommands()", () => {
+      const Commands = Subcommands(CloneCmd, DiffCmd);
+
+      @Command({ name: "git-global", version: "1.0.0" })
+      class GitGlobal {
+        @Arg({ short: "v", long: "verbose", action: ArgAction.Count, global: true })
+        verbose = 0;
+
+        @Arg({ short: "C", long: "directory", help: "Run as if git was started in <path>" })
+        directory?: string;
+
+        command = Commands;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitGlobal);
+      const parser = new Parser(gitCommand);
+
+      const args = ["-C", "/tmp/repo", "-vvv", "clone", "https://example.com/repo"];
+      const result = parser.parse(args, {});
+
+      const git = result.instance as GitGlobal;
+      assertEquals(git.verbose, 3);
+      assertEquals(git.directory, "/tmp/repo");
+
+      const clone = git.command as CloneCmd;
+      assertInstanceOf(clone, CloneCmd);
+      assertEquals(clone.remote, "https://example.com/repo");
+    });
+
+    it("should maintain backward compatibility with array-based @Subcommand", () => {
+      // This test ensures the old API still works
+      @Command({ name: "git-old", version: "1.0.0" })
+      class GitOld {
+        @Subcommand([CloneCmd, DiffCmd])
+        command!: CloneCmd | DiffCmd;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const gitCommand = getCommand(GitOld);
+      const parser = new Parser(gitCommand);
+
+      const args = ["diff", "--head", "feature-branch"];
+      const result = parser.parse(args, {});
+
+      const git = result.instance as GitOld;
+      const diff = git.command as DiffCmd;
+      assertInstanceOf(diff, DiffCmd);
+      assertEquals(diff.head, "feature-branch");
+    });
+  });
+
+  describe("Did You Mean Suggestions", () => {
+    it("should calculate levenshtein distance correctly", () => {
+      assertEquals(levenshteinDistance("kitten", "sitting"), 3);
+      assertEquals(levenshteinDistance("", "abc"), 3);
+      assertEquals(levenshteinDistance("abc", ""), 3);
+      assertEquals(levenshteinDistance("abc", "abc"), 0);
+      assertEquals(levenshteinDistance("verbose", "verbos"), 1);
+    });
+
+    it("should find closest match", () => {
+      const candidates = ["verbose", "version", "help", "config"];
+      assertEquals(findClosestMatch("verbos", candidates), "verbose");
+      assertEquals(findClosestMatch("versoin", candidates), "version");
+      assertEquals(findClosestMatch("hlp", candidates), "help");
+      assertEquals(findClosestMatch("xyz123", candidates), undefined);
+    });
+
+    it("should suggest similar long flags on typo", () => {
+      @Command({ name: "suggest-test", version: "1.0.0" })
+      class SuggestCmd {
+        @Arg({ long: "verbose" })
+        verbose = false;
+
+        @Arg({ long: "config" })
+        config?: string;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(SuggestCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      try {
+        parser.parse(["--verbos"], {});
+      } catch (e) {
+        assertInstanceOf(e, ClepoError);
+        assertEquals(e.kind, ErrorKind.UnknownArgument);
+        assertMatch(e.message, /--verbos.*wasn't expected/);
+        assertMatch(e.message, /tip:.*--verbose/);
+      }
+    });
+
+    it("should not suggest when no close match exists", () => {
+      @Command({ name: "no-suggest-test", version: "1.0.0" })
+      class NoSuggestCmd {
+        @Arg({ long: "verbose" })
+        verbose = false;
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(NoSuggestCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      try {
+        parser.parse(["--xyz123"], {});
+      } catch (e) {
+        assertInstanceOf(e, ClepoError);
+        assertEquals(e.kind, ErrorKind.UnknownArgument);
+        assertEquals(e.message.includes("tip:"), false);
+      }
     });
   });
 });

@@ -24,6 +24,61 @@ export enum ArgAction {
 }
 
 /**
+ * Built-in value parser identifiers.
+ * These can be passed to `valueParser` instead of a custom function.
+ */
+export type BuiltinValueParser =
+  | "number"
+  | "file"
+  | "boolish"
+  | { ranged: [number, number] };
+
+/**
+ * Parses a string as a "boolish" value.
+ * Accepts: true/false, yes/no, on/off, 1/0 (case-insensitive).
+ * @param value The string to parse.
+ * @returns The parsed boolean value.
+ * @throws Error if the value is not a recognized boolish string.
+ */
+export function parseBoolish(value: string): boolean {
+  const lower = value.toLowerCase().trim();
+  const truthy = ["true", "yes", "on", "1"];
+  const falsy = ["false", "no", "off", "0"];
+
+  if (truthy.includes(lower)) return true;
+  if (falsy.includes(lower)) return false;
+
+  throw new Error(
+    `expected one of: true/false, yes/no, on/off, 1/0, got '${value}'`,
+  );
+}
+
+/**
+ * Creates a ranged integer parser.
+ * @param min The minimum allowed value (inclusive).
+ * @param max The maximum allowed value (inclusive).
+ * @returns A function that parses and validates the value.
+ */
+export function createRangedParser(
+  min: number,
+  max: number,
+): (value: string) => number {
+  return (value: string): number => {
+    const num = Number(value);
+    if (isNaN(num)) {
+      throw new Error(`expected a number, got '${value}'`);
+    }
+    if (!Number.isInteger(num)) {
+      throw new Error(`expected an integer, got '${value}'`);
+    }
+    if (num < min || num > max) {
+      throw new Error(`value ${num} is out of range [${min}, ${max}]`);
+    }
+    return num;
+  };
+}
+
+/**
  * Configuration for a command-line argument.
  * This is a hybrid of `clap::Arg` and the `clap_derive::Arg` attribute.
  */
@@ -49,9 +104,18 @@ export class Arg {
   public valueName?: string;
   /** A list of possible values for the argument. */
   public possibleValues?: string[];
-  /** A function to parse and validate the value. */
-  // deno-lint-ignore no-explicit-any
-  public valueParser?: ((value: string) => any) | "number" | "file";
+  /**
+   * A function to parse and validate the value, or a built-in parser identifier.
+   *
+   * Built-in parsers:
+   * - `"number"` - Parses as a number, rejects NaN.
+   * - `"file"` - Placeholder for file path validation (not yet fully implemented).
+   * - `"boolish"` - Accepts yes/no, on/off, true/false, 1/0.
+   * - `{ ranged: [min, max] }` - Parses as integer within the given range (inclusive).
+   */
+  public valueParser?:
+    | ((value: string) => unknown)
+    | BuiltinValueParser;
   /** The property type, inferred via reflection. */
   public type?: "string" | "number" | "boolean" | "list";
   /** The zero-based index for a positional argument. */
@@ -62,6 +126,8 @@ export class Arg {
   public group?: string;
   /** Arguments that conflict with this argument. */
   public conflictsWith?: string[];
+  /** If `true`, this argument is hidden from help output. Useful for internal args. */
+  public hide?: boolean;
 
   constructor(config: Partial<Arg> = {}) {
     Object.assign(this, config);
