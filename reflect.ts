@@ -5,6 +5,11 @@ import type { Arg } from "./arg.ts";
 import type { CommandConfig } from "./command.ts";
 
 /**
+ * Metadata key for storing subcommand property names that need auto-detection.
+ */
+const subcommandPropertiesMetadataKey = Symbol("clepo:subcommand_properties");
+
+/**
  * Represents the type information retrieved via reflection.
  */
 export interface ReflectType {
@@ -142,6 +147,35 @@ export const reflect = {
     const ctor = toConstructor(target);
     return (Reflect.getMetadata(subcommandsMetadataKey, ctor) as
       | SubcommandInfo[]
+      | undefined) ?? [];
+  },
+
+  // --- Subcommand Property Markers (for auto-detection) ---
+
+  /**
+   * Marks a property as a subcommand property that needs auto-detection.
+   * This is used when @Subcommand() is called without arguments.
+   * @param target The class prototype (or constructor - will be normalized).
+   * @param propertyKey The property name to mark.
+   */
+  markSubcommandProperty(target: object, propertyKey: string): void {
+    const ctor = toConstructor(target);
+    const properties = this.getSubcommandProperties(ctor);
+    if (!properties.includes(propertyKey)) {
+      properties.push(propertyKey);
+    }
+    Reflect.defineMetadata(subcommandPropertiesMetadataKey, properties, ctor);
+  },
+
+  /**
+   * Retrieves all property names marked for subcommand auto-detection.
+   * @param target The class constructor (or prototype - will be normalized).
+   * @returns An array of property names.
+   */
+  getSubcommandProperties(target: object): string[] {
+    const ctor = toConstructor(target);
+    return (Reflect.getMetadata(subcommandPropertiesMetadataKey, ctor) as
+      | string[]
       | undefined) ?? [];
   },
 

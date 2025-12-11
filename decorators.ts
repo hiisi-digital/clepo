@@ -5,6 +5,110 @@ import { Command as CommandBuilder, type CommandConfig } from "./command.ts";
 import { reflect, type SubcommandInfo } from "./reflect.ts";
 
 /**
+ * Symbol used to identify SubcommandsMarker objects at runtime.
+ * @internal
+ */
+export const SUBCOMMANDS_MARKER = Symbol("clepo:subcommands_marker");
+
+/**
+ * A marker type that holds subcommand class information.
+ * This is the internal representation used by the `Subcommands()` function.
+ * At type-level it represents the union of instances, but at runtime it's a metadata carrier.
+ */
+export interface SubcommandsMarker<
+  // deno-lint-ignore no-explicit-any
+  T extends (new () => any)[],
+> {
+  [SUBCOMMANDS_MARKER]: true;
+  __classes: T;
+}
+
+/**
+ * The return type of the `Subcommands()` function.
+ * This is a branded type that:
+ * 1. At the type level, represents the union of command instances
+ * 2. Has a brand that allows it to be recognized by the @Subcommand decorator
+ * 3. At runtime, is actually a SubcommandsMarker object
+ */
+// deno-lint-ignore no-explicit-any
+export type SubcommandsResult<T extends (new () => any)[]> =
+  & InstanceType<T[number]>
+  & { readonly __subcommandsBrand: T };
+
+/**
+ * Checks if a value is a SubcommandsMarker.
+ * @internal
+ */
+export function isSubcommandsMarker(
+  value: unknown,
+  // deno-lint-ignore no-explicit-any
+): value is SubcommandsMarker<any> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    SUBCOMMANDS_MARKER in value
+  );
+}
+
+/**
+ * Creates a subcommand "enum" from a list of command classes.
+ * This is the TypeScript equivalent of Rust's `#[derive(Subcommand)] enum`.
+ *
+ * The returned value is typed as a union of the command class instances,
+ * allowing for a clap-like API where the type annotation is minimal.
+ *
+ * @example
+ * ```typescript
+ * // Define subcommand classes
+ * @Command({ about: "Clones repos" })
+ * class Clone {
+ *   @Arg({ positional: true })
+ *   remote!: string;
+ * }
+ *
+ * @Command({ about: "Shows diff" })
+ * class Diff {
+ *   @Arg() base?: string;
+ * }
+ *
+ * // Create the "enum"
+ * const Commands = Subcommands(Clone, Diff);
+ *
+ * // Use in main CLI class
+ * @Command({ name: "git", version: "1.0.0" })
+ * class GitCli {
+ *   command = Commands;  // Type is automatically Clone | Diff
+ * }
+ * ```
+ *
+ * @param classes The subcommand class constructors to include.
+ * @returns A marker that is typed as the union of command instances.
+ */
+// deno-lint-ignore no-explicit-any
+export function Subcommands<T extends (new () => any)[]>(
+  ...classes: T
+): SubcommandsResult<T> {
+  const marker: SubcommandsMarker<T> = {
+    [SUBCOMMANDS_MARKER]: true,
+    __classes: classes,
+  };
+  // Cast to the branded type for TypeScript's benefit.
+  // At runtime, this is the marker object which is detected by getCommand().
+  return marker as unknown as SubcommandsResult<T>;
+}
+
+/**
+ * Checks if a value has the subcommands brand (for decorator type checking).
+ * @internal
+ */
+function hasSubcommandsBrand(
+  value: unknown,
+): value is { readonly __subcommandsBrand: unknown } {
+  // At runtime, we check for the marker symbol, not the brand (which is type-only)
+  return isSubcommandsMarker(value);
+}
+
+/**
  * Converts a camelCase or PascalCase string to kebab-case.
  * @internal
  */
@@ -67,17 +171,60 @@ export function Arg(config: ArgConfigShorthand = {}): PropertyDecorator {
 /**
  * Property decorator that registers one or more subcommand classes to a parent command.
  * The parsed subcommand instance will be injected into this property.
- * @param subcommandClasses An array of subcommand class constructors.
+ *
+ * This decorator accepts three forms:
+ * 1. An array of subcommand class constructors: `@Subcommand([Clone, Diff])`
+ * 2. A SubcommandsMarker from the `Subcommands()` function: `@Subcommand(Commands)`
+ * 3. No arguments: `@Subcommand()` - the subcommands will be detected from the property initializer
+ *
+ * @example
+ * ```typescript
+ * // Form 1: Array of classes (original API)
+ * @Subcommand([Clone, Diff])
+ * command!: Clone | Diff;
+ *
+ * // Form 2: Using Subcommands() helper
+ * const Commands = Subcommands(Clone, Diff);
+ * @Subcommand(Commands)
+ * command = Commands;
+ *
+ * // Form 3: Auto-detection (no decorator argument needed)
+ * const Commands = Subcommands(Clone, Diff);
+ * @Subcommand()
+ * command = Commands;
+ *
+ * // Form 4: Full auto-detection (no decorator at all!)
+ * const Commands = Subcommands(Clone, Diff);
+ * command = Commands;  // getCommand() will detect this automatically
+ * ```
+ *
+ * @param subcommandClasses An array of subcommand classes or a SubcommandsMarker.
  */
 export function Subcommand(
   // deno-lint-ignore no-explicit-any
-  subcommandClasses: (new () => any)[],
+  subcommandClasses?: (new () => any)[] | SubcommandsMarker<any> | SubcommandsResult<any>,
 ): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) => {
     const key = String(propertyKey);
 
-    // For each provided class, create a SubcommandInfo object and add it to the parent's metadata.
-    for (const cls of subcommandClasses) {
+    // deno-lint-ignore no-explicit-any
+    let classes: (new () => any)[];
+
+    if (isSubcommandsMarker(subcommandClasses) || hasSubcommandsBrand(subcommandClasses)) {
+      // Both SubcommandsMarker and SubcommandsResult are backed by the same runtime object
+      // deno-lint-ignore no-explicit-any
+      classes = (subcommandClasses as SubcommandsMarker<any>).__classes;
+    } else if (Array.isArray(subcommandClasses)) {
+      classes = subcommandClasses;
+    } else {
+      // No argument provided - mark this as a subcommand property for auto-detection.
+      // The actual classes will be detected from the initializer in getCommand().
+      reflect.markSubcommandProperty(target, key);
+      return;
+    }
+
+    // Register each class as a subcommand.
+    for (const cls of classes) {
       const info: SubcommandInfo = {
         property: key,
         class: cls,
@@ -90,6 +237,9 @@ export function Subcommand(
 
 /**
  * Retrieves the fully constructed Command builder from a decorated class.
+ * This function also auto-detects SubcommandsMarker properties that weren't
+ * explicitly registered via @Subcommand decorator.
+ *
  * @param target The class constructor.
  */
 export function getCommand(target: new () => unknown): CommandBuilder {
@@ -118,6 +268,10 @@ export function getCommand(target: new () => unknown): CommandBuilder {
     cmd.addArg(arg);
   }
 
+  // Auto-detect SubcommandsMarker properties by creating a temporary instance.
+  // This allows usage without any @Subcommand decorator at all.
+  detectSubcommandsFromInstance(target);
+
   // Get subcommands - pass constructor directly, reflect handles normalization.
   const subcommands = reflect.getSubcommands(target);
   for (const info of subcommands) {
@@ -127,6 +281,41 @@ export function getCommand(target: new () => unknown): CommandBuilder {
   }
 
   return cmd;
+}
+
+/**
+ * Detects SubcommandsMarker values from a class's property initializers
+ * and registers them as subcommands if not already registered.
+ * @internal
+ */
+function detectSubcommandsFromInstance(target: new () => unknown): void {
+  // Create a temporary instance to access property initializers.
+  // This is necessary because experimental decorators don't have access to initializers.
+  const tempInstance = new target();
+  const existingSubcommands = reflect.getSubcommands(target);
+
+  for (const key of Object.getOwnPropertyNames(tempInstance)) {
+    // deno-lint-ignore no-explicit-any
+    const value = (tempInstance as any)[key];
+
+    if (isSubcommandsMarker(value)) {
+      // Check if this property was already registered via @Subcommand.
+      const alreadyRegistered = existingSubcommands.some(
+        (s) => s.property === key,
+      );
+
+      if (!alreadyRegistered) {
+        // Register each class from the marker as a subcommand.
+        for (const cls of value.__classes) {
+          const info: SubcommandInfo = {
+            property: key,
+            class: cls,
+          };
+          reflect.addSubcommand(target, info);
+        }
+      }
+    }
+  }
 }
 
 /**

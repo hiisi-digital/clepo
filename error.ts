@@ -20,6 +20,10 @@ export enum ErrorKind {
   MissingValue,
   /** An unexpected argument was provided. */
   UnexpectedArgument,
+  /** A required subcommand was not provided. */
+  MissingSubcommand,
+  /** Arguments conflict with each other. */
+  ArgumentConflict,
   /** An internal error that indicates a bug in clepo itself. */
   Internal,
 }
@@ -29,12 +33,37 @@ export enum ErrorKind {
  *
  * It contains a `kind` property to allow for robust, programmatic error handling,
  * and a user-friendly `message` that can be displayed directly to the end-user.
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   await Cli.run(MyCommand);
+ * } catch (e) {
+ *   if (e instanceof ClepoError) {
+ *     switch (e.kind) {
+ *       case ErrorKind.MissingRequiredArgument:
+ *         console.error("Missing required argument:", e.message);
+ *         break;
+ *       case ErrorKind.InvalidArgumentValue:
+ *         console.error("Invalid value:", e.message);
+ *         break;
+ *       default:
+ *         console.error("Error:", e.message);
+ *     }
+ *   }
+ * }
+ * ```
  */
 export class ClepoError extends Error {
   /**
+   * The name of the error class, always "ClepoError".
+   */
+  public override readonly name = "ClepoError";
+
+  /**
    * Creates a new ClepoError.
-   * @param kind The kind of error.
-   * @param message The user-friendly error message.
+   * @param kind The kind of error, used for programmatic error handling.
+   * @param message The user-friendly error message to display.
    * @param command The command context in which the error occurred, if available.
    */
   constructor(
@@ -43,9 +72,24 @@ export class ClepoError extends Error {
     public readonly command?: Command,
   ) {
     super(message);
-    this.name = "ClepoError";
 
     // This is a standard way to make custom errors work correctly with `instanceof`.
     Object.setPrototypeOf(this, ClepoError.prototype);
+  }
+
+  /**
+   * Returns a formatted error string suitable for display to end users.
+   * Includes the command context if available.
+   */
+  public format(): string {
+    const prefix = this.command ? `${this.command.name}: ` : "";
+    return `error: ${prefix}${this.message}`;
+  }
+
+  /**
+   * Returns a string representation of the error kind for debugging.
+   */
+  public kindName(): string {
+    return ErrorKind[this.kind];
   }
 }

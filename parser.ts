@@ -1,11 +1,12 @@
 // loru/packages/clepo/parser.ts
 
-import { type Arg, ArgAction } from "./arg.ts";
+import { type Arg, ArgAction, createRangedParser, parseBoolish } from "./arg.ts";
 import { ArgMatcher, type ArgMatches, ValueSource } from "./arg_matcher.ts";
 import type { CommandInstance } from "./command.ts";
 import { type Command, CommandSettings } from "./command.ts";
 import { ClepoError, ErrorKind } from "./error.ts";
 import { type ArgCursor, type ParsedArg, RawArgs } from "./lexer.ts";
+import { findClosestMatch } from "./util.ts";
 
 /**
  * The result of a successful parse operation.
@@ -174,9 +175,16 @@ export class Parser {
       this.debugLog(`  -> Processing as positional`);
 
       if (posIndex >= positionals.length) {
+        const value = arg.toValue();
+        // Check if it might be a misspelled subcommand
+        const subcommandNames = [...new Set(command.subcommands.values())].map((s) => s.name);
+        const suggestion = findClosestMatch(value, subcommandNames);
+        const suggestionText = suggestion
+          ? `\n\n    tip: a similar subcommand exists: '${suggestion}'`
+          : "";
         throw new ClepoError(
           ErrorKind.UnexpectedArgument,
-          `Found argument '${arg.toValue()}' which wasn't expected, or isn't valid in this context.`,
+          `Found argument '${value}' which wasn't expected, or isn't valid in this context.${suggestionText}`,
           command,
         );
       }
@@ -210,10 +218,17 @@ export class Parser {
     const argDef = this.findArg(cmd, key, "long");
 
     if (!argDef) {
-      // TODO(#clepo-suggestions): Suggestions ("Did you mean...?")
+      // Collect all long flags for suggestion
+      const longFlags = [...cmd.args.values()]
+        .filter((a) => a.long)
+        .map((a) => a.long!);
+      const suggestion = findClosestMatch(key, longFlags);
+      const suggestionText = suggestion
+        ? `\n\n    tip: a similar argument exists: '--${suggestion}'`
+        : "";
       throw new ClepoError(
         ErrorKind.UnknownArgument,
-        `Found argument '--${key}' which wasn't expected.`,
+        `Found argument '--${key}' which wasn't expected.${suggestionText}`,
         cmd,
       );
     }
@@ -232,9 +247,11 @@ export class Parser {
           valStr = raw.nextRaw(cursor);
           this.debugLog(`    -> Consumed next token as value: ${valStr}`);
         } else {
+          const valueName = argDef.valueName ?? argDef.id ?? "VALUE";
           throw new ClepoError(
             ErrorKind.MissingValue,
-            `The argument '--${key}' requires a value, but none was supplied.`,
+            `The argument '--${key}' requires a value, but none was supplied.\n` +
+              `    usage: --${key} <${valueName}>`,
             cmd,
           );
         }
@@ -272,9 +289,17 @@ export class Parser {
 
       const argDef = this.findArg(cmd, char, "short");
       if (!argDef) {
+        // Collect all short flags for suggestion
+        const shortFlags = [...cmd.args.values()]
+          .filter((a) => a.short)
+          .map((a) => a.short!);
+        const suggestion = findClosestMatch(char, shortFlags);
+        const suggestionText = suggestion
+          ? `\n\n    tip: a similar argument exists: '-${suggestion}'`
+          : "";
         throw new ClepoError(
           ErrorKind.UnknownArgument,
-          `Found argument '-${char}' which wasn't expected.`,
+          `Found argument '-${char}' which wasn't expected.${suggestionText}`,
           cmd,
         );
       }
@@ -294,9 +319,12 @@ export class Parser {
             valStr = raw.nextRaw(cursor);
             this.debugLog(`    -> Consumed next token as value: ${valStr}`);
           } else {
+            const valueName = argDef.valueName ?? argDef.id ?? "VALUE";
             throw new ClepoError(
               ErrorKind.MissingValue,
-              `The argument '-${char}' requires a value, but none was supplied.`,
+              `The argument '-${char}' requires a value, but none was supplied.\n` +
+                `    usage: -${char} <${valueName}>` +
+                (argDef.long ? ` or --${argDef.long} <${valueName}>` : ""),
               cmd,
             );
           }
@@ -322,6 +350,7 @@ export class Parser {
 
     let parsedValue: unknown = value;
 
+    // Custom function parser takes highest priority
     if (typeof argDef.valueParser === "function") {
       try {
         parsedValue = argDef.valueParser(value);
@@ -333,7 +362,38 @@ export class Parser {
           cmd,
         );
       }
-    } else if (argDef.valueParser === "number" || argDef.type === "number") {
+    } // Ranged integer parser: { ranged: [min, max] }
+    else if (
+      typeof argDef.valueParser === "object" &&
+      argDef.valueParser !== null &&
+      "ranged" in argDef.valueParser
+    ) {
+      const [min, max] = argDef.valueParser.ranged;
+      const rangedParser = createRangedParser(min, max);
+      try {
+        parsedValue = rangedParser(value);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        throw new ClepoError(
+          ErrorKind.InvalidArgumentValue,
+          `Invalid value for '${this.getArgName(argDef)}': ${message}`,
+          cmd,
+        );
+      }
+    } // Boolish parser: accepts yes/no, on/off, true/false, 1/0
+    else if (argDef.valueParser === "boolish") {
+      try {
+        parsedValue = parseBoolish(value);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        throw new ClepoError(
+          ErrorKind.InvalidArgumentValue,
+          `Invalid value for '${this.getArgName(argDef)}': ${message}`,
+          cmd,
+        );
+      }
+    } // Number parser (built-in or inferred from type)
+    else if (argDef.valueParser === "number" || argDef.type === "number") {
       parsedValue = Number(value);
       if (isNaN(parsedValue as number)) {
         throw new ClepoError(
@@ -342,10 +402,12 @@ export class Parser {
           cmd,
         );
       }
-    } else if (argDef.type === "boolean") {
+    } // Boolean type (strict true/false/1/0)
+    else if (argDef.type === "boolean") {
       parsedValue = value.toLowerCase() === "true" || value === "1";
     }
 
+    // Validate against possible values if defined
     if (
       argDef.possibleValues &&
       !argDef.possibleValues.includes(String(parsedValue))
@@ -397,9 +459,11 @@ export class Parser {
     // 1. Required Arguments
     for (const arg of cmd.args.values()) {
       if (arg.required && !matches.contains(arg.id!)) {
+        const argName = this.getArgName(arg);
+        const helpHint = arg.help ? `\n    help: ${arg.help}` : "";
         throw new ClepoError(
           ErrorKind.MissingRequiredArgument,
-          `The following required argument was not provided: ${this.getArgName(arg)}`,
+          `The following required argument was not provided: ${argName}${helpHint}`,
           cmd,
         );
       }
@@ -420,11 +484,12 @@ export class Parser {
       if (!group.multiple && presentArgs.length > 1) {
         const arg1 = cmd.args.get(presentArgs[0]);
         const arg2 = cmd.args.get(presentArgs[1]);
+        const arg1Name = arg1 ? this.getArgName(arg1) : presentArgs[0];
+        const arg2Name = arg2 ? this.getArgName(arg2) : presentArgs[1];
         throw new ClepoError(
-          ErrorKind.UnexpectedArgument,
-          `The argument '${arg1 ? this.getArgName(arg1) : presentArgs[0]}' cannot be used with '${
-            arg2 ? this.getArgName(arg2) : presentArgs[1]
-          }'`,
+          ErrorKind.ArgumentConflict,
+          `The argument '${arg1Name}' cannot be used with '${arg2Name}'.\n` +
+            `    note: These arguments belong to the mutually exclusive group '${group.id}'.`,
           cmd,
         );
       }
@@ -438,11 +503,12 @@ export class Parser {
       for (const conflictId of arg.conflictsWith) {
         if (matches.contains(conflictId)) {
           const conflictArg = cmd.args.get(conflictId);
+          const argName = this.getArgName(arg);
+          const conflictName = conflictArg ? this.getArgName(conflictArg) : conflictId;
           throw new ClepoError(
-            ErrorKind.UnexpectedArgument,
-            `The argument '${this.getArgName(arg)}' cannot be used with '${
-              conflictArg ? this.getArgName(conflictArg) : conflictId
-            }'`,
+            ErrorKind.ArgumentConflict,
+            `The argument '${argName}' cannot be used with '${conflictName}'.\n` +
+              `    note: These arguments are mutually exclusive.`,
             cmd,
           );
         }
@@ -452,12 +518,14 @@ export class Parser {
     // Check subcommand requirement
     const sub = matches.subcommandMatches();
     if (cmd.isSet(CommandSettings.SubcommandRequired) && !sub) {
-      // If SubcommandRequired is set, and no subcommand is present
-      // We check if ArgRequiredElseHelp is set, which might change behavior (usually prints help)
-      // But for validation, missing subcommand is an error.
+      const availableSubcommands = [...new Set(cmd.subcommands.values())]
+        .map((s) => s.name)
+        .join(", ");
       throw new ClepoError(
-        ErrorKind.MissingRequiredArgument, // Or MissingSubcommand if we had that error kind
-        `'${cmd.name}' requires a subcommand but one was not provided.`,
+        ErrorKind.MissingSubcommand,
+        `'${cmd.name}' requires a subcommand but one was not provided.\n` +
+          `    available subcommands: ${availableSubcommands}\n\n` +
+          `For more information, try '${cmd.name} --help'.`,
         cmd,
       );
     }
@@ -475,7 +543,8 @@ export class Parser {
     if (!cmd.cls) {
       throw new ClepoError(
         ErrorKind.Internal,
-        `Command ${cmd.name} has no class.`,
+        `Command '${cmd.name}' has no associated class.\n` +
+          `    note: This is an internal error. Ensure the command was created via decorators or has 'cls' set.`,
         cmd,
       );
     }
