@@ -20,63 +20,158 @@
 The `clepo` package provides a decorator-based interface for building
 command-line tools, closely mirroring the Rust `clap` derive API.
 
-```typescript
-import { Arg, Cli, Command, Context } from "jsr:@clepo/core";
+### Decorator API
 
-@Command({
-  name: "rm",
-  about: "Remove a file",
-  version: "1.0.0",
-})
+```typescript
+import { Arg, ArgAction, Cli, CommandDecorator, Subcommand } from "@loru/clepo";
+
+// Subcommand definition
+@CommandDecorator({ about: "Remove files from the working tree" })
 class RemoveCmd {
   @Arg({ short: "f", long: true, help: "Force removal" })
   force: boolean = false;
 
-  // Arguments without short/long flags are positional by default
-  @Arg({ help: "File to remove", required: true })
-  path!: string;
+  @Arg({ short: "r", long: true, help: "Remove directories recursively" })
+  recursive: boolean = false;
 
-  async run(ctx: Context) {
-    // ctx.fs automatically handles dry-run logic when --dry-run is passed
-    if (this.force || await ctx.helper.confirm(`Delete ${this.path}?`)) {
-      await ctx.fs.remove(this.path);
-      ctx.log.info(`Deleted ${this.path}`);
-    }
+  // Arguments without short/long flags are positional by default
+  @Arg({ help: "Files to remove", required: true, action: ArgAction.Append })
+  paths!: string[];
+
+  async run() {
+    console.log(`Removing: ${this.paths.join(", ")}`);
+    console.log(`Force: ${this.force}, Recursive: ${this.recursive}`);
+  }
+}
+
+// Main application
+@CommandDecorator({
+  name: "myapp",
+  version: "1.0.0",
+  about: "A sample CLI application",
+})
+class MyApp {
+  @Arg({ short: "v", long: true, action: ArgAction.Count, global: true })
+  verbose = 0;
+
+  @Subcommand([RemoveCmd])
+  command!: RemoveCmd;
+
+  async run() {
+    console.log(`Verbosity level: ${this.verbose}`);
   }
 }
 
 if (import.meta.main) {
-  await new Cli(RemoveCmd).run(Deno.args);
+  await Cli.run(MyApp);
+}
+```
+
+### Builder API
+
+For more dynamic scenarios, you can build commands imperatively:
+
+```typescript
+import { ArgAction, ArgBuilder, Command, CommandSettings } from "@loru/clepo";
+
+class GreetInstance {
+  name?: string;
+  count = 1;
+
+  async run() {
+    for (let i = 0; i < this.count; i++) {
+      console.log(`Hello, ${this.name}!`);
+    }
+  }
+}
+
+const cmd = new Command("greet")
+  .setVersion("1.0.0")
+  .setAbout("A friendly greeter")
+  .addArg(
+    new ArgBuilder({
+      id: "name",
+      short: "n",
+      long: "name",
+      help: "Name to greet",
+      required: true,
+    })
+  )
+  .addArg(
+    new ArgBuilder({
+      id: "count",
+      short: "c",
+      long: "count",
+      help: "Number of times to greet",
+      default: 1,
+      valueParser: "number",
+    })
+  );
+
+cmd.cls = GreetInstance;
+
+if (import.meta.main) {
+  await cmd.run();
 }
 ```
 
 ## Features
 
 - **Declarative API**: Define commands, arguments, and options using TypeScript
-  decorators (`@Command`, `@Arg`).
-- **Command Hierarchy**: Support for nested subcommands via `@Subcommand` to
-  create structured CLIs.
-- **Context Injection**: Abstracts system interactions (filesystem, shell) for
-  testing and safety.
-- **Automatic Help**: Generates usage information and help text from command
-  metadata.
-- **Dry-Run Support**: Built-in `DryRunFS` and `DryRunShell` implementations
-  when `--dry-run` is detected.
+  decorators (`@Command`, `@Arg`, `@Subcommand`).
+- **Builder API**: Imperatively construct CLI commands for dynamic use cases.
+- **Clap-aligned Architecture**: Follows Rust's `clap` patterns with recursive
+  descent parsing and proper phase separation.
+- **Automatic Help/Version**: Built-in `-h/--help` and `-V/--version` flags.
+- **Environment Variables**: Read argument values from environment variables
+  with the `env` option.
+- **Value Parsing**: Built-in parsers for numbers and support for custom
+  validation functions.
+- **Possible Values**: Restrict arguments to a set of allowed values.
+- **Global Arguments**: Propagate arguments to all subcommands with `global: true`.
+- **Argument Groups**: Define mutually exclusive or required-together arguments.
+- **Typed Errors**: Structured `ClepoError` with `ErrorKind` for programmatic
+  error handling.
 
-## The problem
+## Argument Actions
+
+The `ArgAction` enum controls how arguments behave:
+
+| Action     | Description                                    | Default For   |
+| :--------- | :--------------------------------------------- | :------------ |
+| `Set`      | Stores the value (last wins)                   | `string`      |
+| `Append`   | Collects multiple values into an array         | `string[]`    |
+| `SetTrue`  | Sets to `true` when flag is present            | `boolean`     |
+| `SetFalse` | Sets to `false` when flag is present           | -             |
+| `Count`    | Counts occurrences (e.g., `-vvv` → `3`)        | -             |
+| `Help`     | Triggers help output                           | Auto-injected |
+| `Version`  | Triggers version output                        | Auto-injected |
+
+## The Problem
 
 Building CLI tools often involves significant boilerplate code for argument
 parsing, validation, and help text generation. Without a structured framework,
 tools can become inconsistent in behavior and difficult to maintain.
 
-Additionally, implementing robust safety mechanisms like "dry runs" is often an
-afterthought, leading to scattered conditional logic (`if (!dryRun) ...`) that
-is prone to errors.
+`clepo` addresses these issues by providing a consistent, ergonomic API inspired
+by Rust's `clap`. It allows developers to define the CLI interface
+declaratively, ensuring consistency and reducing boilerplate.
 
-`clepo` aims to address these issues by providing a consistent, ergonomic API
-inspired by Rust's `clap`. It allows developers to define the CLI interface
-declaratively, ensuring consistency and reducing boilerplate, while also
-offering built-in patterns for handling side effects.
+## Installation
+
+```typescript
+import { Arg, Cli, CommandDecorator } from "jsr:@loru/clepo";
+```
+
+Or add to your `deno.json`:
+
+```json
+{
+  "imports": {
+    "@loru/clepo": "jsr:@loru/clepo@^0.4.0"
+  }
+}
+```
 
 ## Support
 

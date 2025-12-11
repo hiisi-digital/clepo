@@ -6,8 +6,10 @@
  */
 export class ShortFlags {
   private remaining: string;
+  public readonly raw: string;
 
   constructor(cluster: string) {
+    this.raw = cluster;
     this.remaining = cluster;
   }
 
@@ -58,16 +60,16 @@ export class ShortFlags {
  * interpretation to the `Parser`.
  */
 export class ParsedArg {
-  constructor(public readonly inner: string) {}
+  constructor(public readonly raw: string) {}
 
   /** Checks if the argument is `--`. */
   public isEscape(): boolean {
-    return this.inner === "--";
+    return this.raw === "--";
   }
 
   /** Checks if the argument is `-`. */
   public isStdio(): boolean {
-    return this.inner === "-";
+    return this.raw === "-";
   }
 
   /**
@@ -75,7 +77,7 @@ export class ParsedArg {
    * This does not include the escape sequence `--`.
    */
   public isLong(): boolean {
-    return this.inner.startsWith("--") && !this.isEscape();
+    return this.raw.startsWith("--") && !this.isEscape();
   }
 
   /**
@@ -90,7 +92,7 @@ export class ParsedArg {
       return undefined;
     }
 
-    const content = this.inner.slice(2);
+    const content = this.raw.slice(2);
     const eqIndex = content.indexOf("=");
 
     if (eqIndex !== -1) {
@@ -107,7 +109,7 @@ export class ParsedArg {
    * This does not include stdio (`-`) or negative numbers (`-123`).
    */
   public isShort(): boolean {
-    return this.inner.startsWith("-") &&
+    return this.raw.startsWith("-") &&
       !this.isStdio() &&
       !this.isLong() &&
       !this.isNegativeNumber();
@@ -121,7 +123,7 @@ export class ParsedArg {
     if (!this.isShort()) {
       return undefined;
     }
-    const content = this.inner.slice(1);
+    const content = this.raw.slice(1);
     return new ShortFlags(content);
   }
 
@@ -130,12 +132,12 @@ export class ParsedArg {
    * This is crucial to distinguish from a short flag.
    */
   public isNegativeNumber(): boolean {
-    return /^-(\d+(\.\d*)?|\.\d+)$/.test(this.inner);
+    return /^-(\d+(\.\d*)?|\.\d+)$/.test(this.raw);
   }
 
   /** Returns the raw inner string of the argument. */
   public toValue(): string {
-    return this.inner;
+    return this.raw;
   }
 }
 

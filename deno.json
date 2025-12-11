@@ -1,15 +1,20 @@
 {
-  "name": "@clepo/core",
-  "version": "0.1.0",
+  "name": "@loru/clepo",
+  "version": "0.4.0",
   "exports": "./mod.ts",
-  "imports": {
-    "std/": "https://deno.land/std@0.208.0/"
-  },
   "compilerOptions": {
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
-  "fmt": {
-    "indentWidth": 2,
-    "singleQuote": false
+  "imports": {
+    "@std/fmt": "jsr:@std/fmt@^1.0.0",
+    "@std/assert": "jsr:@std/assert@^1.0.0",
+    "@std/testing": "jsr:@std/testing@^1.0.0",
+    "reflect-metadata": "https://deno.land/x/reflection@0.0.2/mod.ts"
+  },
+  "tasks": {
+    "test": "deno test tests/ --allow-read",
+    "lint": "deno lint",
+    "check": "deno check mod.ts"
   }
 }

@@ -15,18 +15,18 @@ behavior where possible, adapted for TypeScript idioms.
 | **Global Arguments**      | `global = true`          | `global: true`              | ✅     | Supported in `@Arg` config.                                                      |
 | **Aliases**               | `visible_aliases`        | `aliases: []`               | ✅     | Supported in `@Command` config for subcommands.                                  |
 | **Boolean Flags**         | `action = SetTrue`       | `action: ArgAction.SetTrue` | ✅     | Inferred from `boolean` type, or can be set explicitly.                          |
-| **Auto-Help**             | `-h`, `--help`           | `-h`, `--help`              | ✅     | Basic implementation complete.                                                   |
+| **Auto-Help**             | `-h`, `--help`           | `-h`, `--help`              | ✅     | Clap-style formatting and coloring complete.                                     |
 | **Version Flag**          | `-V`, `--version`        | `-V`, `--version`           | ✅     | Auto-handled by the parser.                                                      |
 | **Environment Variables** | `env = "MY_VAR"`         | `env: "MY_VAR"`             | ✅     | Supported in `@Arg` config.                                                      |
 | **Default Values**        | `default_value = "x"`    | `default: 'x'`              | ✅     | Supported in `@Arg` config and reflected in help text.                           |
 | **Value Validation**      | `value_parser`           | `valueParser: fn`           | ✅     | Support for custom functions and `number` parser complete.                       |
 | **Enumerated Values**     | `value_enum`             | `possibleValues`            | ✅     | Supported via `possibleValues` in `@Arg` and the `@ValueEnum` decorator.         |
 | **Collections**           | `Vec<T>`                 | `action: ArgAction.Append`  | ✅     | Supported via `action: ArgAction.Append`.                                        |
-| **Argument Groups**       | `ArgGroup`               | ❌                          | ❌     | Missing. Logic for "XOR" (mutually exclusive) or "AND" (required together) args. |
+| **Argument Groups**       | `ArgGroup`               | `group`, `conflictsWith`    | ⚠️     | Basic support for groups and conflicts. Needs more comprehensive testing.        |
 | **Value Delimiters**      | `value_delimiter = ','`  | ❌                          | ❌     | Missing. Handling lists via comma separation vs multiple flags.                  |
 | **Shell Completions**     | `clap_complete`          | ❌                          | ❌     | Missing. Generation of scripts for bash/zsh/fish.                                |
 | **Man Page Generation**   | `clap_mangen`            | ❌                          | ❌     | Missing. Documentation generation.                                               |
-| **Colored Help**          | `color` feature          | ❌                          | ❌     | Missing. ANSI styling for help output.                                           |
+| **Colored Help**          | `color` feature          | ✅                          | ✅     | ANSI styling for help output is implemented.                                     |
 | **Suggestions**           | "Did you mean...?"       | ❌                          | ❌     | Missing. Levenshtein distance for typos.                                         |
 | **Custom Usage**          | `override_usage`         | ❌                          | ❌     | Missing. Ability to override the auto-generated usage string.                    |
 
@@ -93,7 +93,7 @@ import { Arg, ArgAction, Command, Subcommand } from "clepo";
 class Add {
   @Arg({ help: "Files to add", required: true, action: ArgAction.Append })
   pathspec!: string[]; // Positional because no 'short' or 'long' specified
-
+REA
   @Arg({ short: "n", long: true, help: "Dry run" })
   dryRun: boolean = false;
 }
@@ -127,18 +127,18 @@ class Git {
 API.
 
 1. **Refactor `types.ts`**:
-   - The interface for command configuration will be named `CommandConfig`.
-   - Rename `ArgConfig` -> `Arg`.
+   - The interface for command configuration will be named `CommandConfig`. ✅
+   - Rename `ArgConfig` -> `Arg`. ✅
    - Add `ArgAction` enum (`Set`, `Append`, `SetTrue`, `SetFalse`, `Count`,
-     `Help`, `Version`).
+     `Help`, `Version`). ✅
 2. **Refactor `decorators.ts`**:
-   - Deprecate/Remove `@Option` and the original `@Command` decorator.
-   - Implement the new `@Command`, `@Subcommand`, and `@Arg` decorators.
+   - Deprecate/Remove `@Option` and the original `@Command` decorator. ✅
+   - Implement the new `@Command`, `@Subcommand`, and `@Arg` decorators. ✅
    - Implement Reflection logic to map Property Types to `ArgAction` defaults
-     (e.g., `boolean` -> `SetTrue`, `number` -> `Set` or `Count`??).
+     (e.g., `boolean` -> `SetTrue`, `number` -> `Set` or `Count`??). ✅
 3. **Refactor `app.ts` -> `Cli.ts`**:
-   - Re-implement the runtime loop.
-   - Basic "Positional vs Flag" logic using the new structures.
+   - Re-implement the runtime loop. ✅
+   - Basic "Positional vs Flag" logic using the new structures. ✅
 
 ### Phase 2: Robust Parsing & Validation (v0.3)
 
@@ -158,11 +158,11 @@ API.
 **Goal**: formatting and display.
 
 1. **Help Generation**:
-   - Auto-generate Usage string.
-   - Format help text similar to `clap` (aligned columns).
-   - Support colored output (ANSI).
+   - Auto-generate Usage string. ✅
+   - Format help text similar to `clap` (aligned columns). ✅
+   - Support colored output (ANSI). ✅
 2. **Version**:
-   - Auto-implement `-V` / `--version`.
+   - Auto-implement `-V` / `--version`. ✅
 
 ## 5. Migration Guide (Internal)
 
