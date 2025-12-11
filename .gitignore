@@ -3,3 +3,4 @@ cov_profile
 coverage
 
 docs_ref/*.html
+docs_ref/clap/

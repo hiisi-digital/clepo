@@ -135,7 +135,7 @@ export class Parser {
 
             // Attach result to current matcher and STOP parsing for this command.
             matcher.setSubcommand(sub.name, subMatcher.intoInner());
-            
+
             // We return here because control has passed to the subcommand.
             // But we must fill defaults for THIS command before returning.
             this.fillDefaultsAndEnv(command, matcher, env);
@@ -205,12 +205,12 @@ export class Parser {
     arg: ParsedArg,
     raw: RawArgs,
     cursor: ArgCursor,
-  ) {
+  ): void {
     const [key, attachedVal] = arg.toLong()!;
     const argDef = this.findArg(cmd, key, "long");
 
     if (!argDef) {
-      // TODO: Suggestions ("Did you mean...?")
+      // TODO(#clepo-suggestions): Suggestions ("Did you mean...?")
       throw new ClepoError(
         ErrorKind.UnknownArgument,
         `Found argument '--${key}' which wasn't expected.`,
@@ -227,7 +227,7 @@ export class Parser {
       if (valStr === undefined) {
         // Try to consume the next token as value
         const peek = raw.peek(cursor);
-        // We only consume if the next token doesn't look like a flag (unless allowHyphenValues is on - TODO)
+        // We only consume if the next token doesn't look like a flag (unless allowHyphenValues is on)
         if (peek && !peek.isLong() && !peek.isShort() && !peek.isEscape()) {
           valStr = raw.nextRaw(cursor);
           this.debugLog(`    -> Consumed next token as value: ${valStr}`);
@@ -262,7 +262,7 @@ export class Parser {
     arg: ParsedArg,
     raw: RawArgs,
     cursor: ArgCursor,
-  ) {
+  ): void {
     const shorts = arg.toShort()!;
     this.debugLog(`  -> Short flag(s): -${shorts.raw}`);
 
@@ -338,9 +338,7 @@ export class Parser {
       if (isNaN(parsedValue as number)) {
         throw new ClepoError(
           ErrorKind.InvalidArgumentValue,
-          `Invalid value for '${
-            this.getArgName(argDef)
-          }': expected a number, got '${value}'.`,
+          `Invalid value for '${this.getArgName(argDef)}': expected a number, got '${value}'.`,
           cmd,
         );
       }
@@ -364,7 +362,7 @@ export class Parser {
     return parsedValue;
   }
 
-  private applyFlagAction(argDef: Arg, matcher: ArgMatcher) {
+  private applyFlagAction(argDef: Arg, matcher: ArgMatcher): void {
     const action = argDef.action;
     if (action === ArgAction.SetTrue) {
       matcher.addValTo(argDef.id!, true);
@@ -378,7 +376,7 @@ export class Parser {
     cmd: Command,
     matcher: ArgMatcher,
     env: Record<string, string>,
-  ) {
+  ): void {
     for (const arg of cmd.args.values()) {
       if (!matcher.contains(arg.id!)) {
         // Check Env
@@ -395,15 +393,13 @@ export class Parser {
     }
   }
 
-  private validate(cmd: Command, matches: ArgMatches) {
+  private validate(cmd: Command, matches: ArgMatches): void {
     // 1. Required Arguments
     for (const arg of cmd.args.values()) {
       if (arg.required && !matches.contains(arg.id!)) {
         throw new ClepoError(
           ErrorKind.MissingRequiredArgument,
-          `The following required argument was not provided: ${
-            this.getArgName(arg)
-          }`,
+          `The following required argument was not provided: ${this.getArgName(arg)}`,
           cmd,
         );
       }
@@ -411,9 +407,7 @@ export class Parser {
 
     // 2. Argument Groups
     for (const group of cmd.groups.values()) {
-      const presentArgs = (group.args ?? []).filter((id) =>
-        matches.contains(id)
-      );
+      const presentArgs = (group.args ?? []).filter((id) => matches.contains(id));
 
       if (group.required && presentArgs.length === 0) {
         throw new ClepoError(
@@ -428,9 +422,7 @@ export class Parser {
         const arg2 = cmd.args.get(presentArgs[1]);
         throw new ClepoError(
           ErrorKind.UnexpectedArgument,
-          `The argument '${
-            arg1 ? this.getArgName(arg1) : presentArgs[0]
-          }' cannot be used with '${
+          `The argument '${arg1 ? this.getArgName(arg1) : presentArgs[0]}' cannot be used with '${
             arg2 ? this.getArgName(arg2) : presentArgs[1]
           }'`,
           cmd,
@@ -567,7 +559,7 @@ export class Parser {
     return arg.long ? `--${arg.long}` : (arg.short ? `-${arg.short}` : arg.id!);
   }
 
-  private debugLog(...messages: string[]) {
+  private debugLog(...messages: string[]): void {
     if (this.debug) {
       for (const message of messages) {
         console.log(`[clepo parser] ${message}`);

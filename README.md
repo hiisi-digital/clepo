@@ -32,7 +32,7 @@ class RemoveCmd {
   force: boolean = false;
 
   @Arg({ short: "r", long: true, help: "Remove directories recursively" })
-  recursive: boolean = false;
+  recursive: boolean = false; // Type annotation enables auto-inference
 
   // Arguments without short/long flags are positional by default
   @Arg({ help: "Files to remove", required: true, action: ArgAction.Append })
@@ -95,7 +95,7 @@ const cmd = new Command("greet")
       long: "name",
       help: "Name to greet",
       required: true,
-    })
+    }),
   )
   .addArg(
     new ArgBuilder({
@@ -105,7 +105,7 @@ const cmd = new Command("greet")
       help: "Number of times to greet",
       default: 1,
       valueParser: "number",
-    })
+    }),
   );
 
 cmd.cls = GreetInstance;
@@ -132,20 +132,54 @@ if (import.meta.main) {
 - **Argument Groups**: Define mutually exclusive or required-together arguments.
 - **Typed Errors**: Structured `ClepoError` with `ErrorKind` for programmatic
   error handling.
+- **Type Inference**: Automatic action/parser inference from TypeScript types
+  (requires explicit type annotations).
+- **Explicit Type Config**: Future-proofed for TC39 decorators with explicit
+  `type` option (`"string"`, `"number"`, `"boolean"`, `"list"`).
 
 ## Argument Actions
 
 The `ArgAction` enum controls how arguments behave:
 
-| Action     | Description                                    | Default For   |
-| :--------- | :--------------------------------------------- | :------------ |
-| `Set`      | Stores the value (last wins)                   | `string`      |
-| `Append`   | Collects multiple values into an array         | `string[]`    |
-| `SetTrue`  | Sets to `true` when flag is present            | `boolean`     |
-| `SetFalse` | Sets to `false` when flag is present           | -             |
-| `Count`    | Counts occurrences (e.g., `-vvv` → `3`)        | -             |
-| `Help`     | Triggers help output                           | Auto-injected |
-| `Version`  | Triggers version output                        | Auto-injected |
+| Action     | Description                             | Default For   |
+| :--------- | :-------------------------------------- | :------------ |
+| `Set`      | Stores the value (last wins)            | `string`      |
+| `Append`   | Collects multiple values into an array  | `string[]`    |
+| `SetTrue`  | Sets to `true` when flag is present     | `boolean`     |
+| `SetFalse` | Sets to `false` when flag is present    | -             |
+| `Count`    | Counts occurrences (e.g., `-vvv` → `3`) | -             |
+| `Help`     | Triggers help output                    | Auto-injected |
+| `Version`  | Triggers version output                 | Auto-injected |
+
+## Type Annotations
+
+For proper type inference, always use explicit type annotations on your
+properties:
+
+```typescript
+// ✅ Good - explicit type annotation
+@Arg({ long: "count" })
+count: number = 0;
+
+// ✅ Good - array type triggers ArgAction.Append
+@Arg({ long: "files" })
+files: string[] = [];
+
+// ⚠️ Works but no auto-parsing - infers as unknown
+@Arg({ long: "value" })
+value = 42; // No type annotation
+
+// ✅ Explicit type config (works without reflection, TC39-ready)
+@Arg({ long: "amount", type: "number" })
+amount!: number;
+```
+
+This is required because TypeScript's `emitDecoratorMetadata` only emits type
+information for properties with explicit type annotations.
+
+> **Future-proofing**: The explicit `type` option works regardless of the
+> decorator system, making your code ready for TC39 decorators when the
+> ecosystem migrates.
 
 ## The Problem
 
@@ -168,7 +202,7 @@ Or add to your `deno.json`:
 ```json
 {
   "imports": {
-    "@loru/clepo": "jsr:@loru/clepo@^0.4.0"
+    "@loru/clepo": "jsr:@loru/clepo@^0.4.1"
   }
 }
 ```
