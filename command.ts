@@ -1,6 +1,6 @@
 // loru/packages/clepo/command.ts
 
-import type { Arg } from "./arg.ts";
+import { Arg, ArgAction } from "./arg.ts";
 import { ClepoError } from "./error.ts";
 import { HelpGenerator } from "./help.ts";
 import { Parser } from "./parser.ts";
@@ -21,6 +21,21 @@ export enum CommandSettings {
   SubcommandRequired = 1 << 3,
   /** An argument is required if no subcommand is present. */
   ArgRequiredElseHelp = 1 << 4,
+}
+
+/**
+ * Defines a group of arguments.
+ * This is the TypeScript equivalent of `clap::ArgGroup`.
+ */
+export interface ArgGroup {
+  /** The unique identifier for the group. */
+  id: string;
+  /** The arguments that belong to this group. */
+  args?: string[];
+  /** Whether the group is required (at least one arg must be present). */
+  required?: boolean;
+  /** Whether multiple arguments from the group can be used. */
+  multiple?: boolean;
 }
 
 /**
@@ -75,6 +90,7 @@ export class Command {
   public parent?: Command;
   public args: Map<string, Arg> = new Map<string, Arg>(); // Key is property name
   public subcommands: Map<string, Command> = new Map<string, Command>(); // Key is subcommand name/alias
+  public groups: Map<string, ArgGroup> = new Map<string, ArgGroup>(); // Key is group ID
   /** The property on the parent class where the subcommand instance should be injected. */
   public subcommandProperty?: string;
   private settings: number = CommandSettings.HelpFlag |
@@ -122,6 +138,14 @@ export class Command {
   }
 
   /**
+   * Adds an argument group to the command.
+   */
+  public addGroup(group: ArgGroup): this {
+    this.groups.set(group.id, group);
+    return this;
+  }
+
+  /**
    * Adds a subcommand to the command.
    */
   public addSubcommand(subcommand: Command): this {
@@ -160,6 +184,46 @@ export class Command {
   }
 
   /**
+   * Injects the automatic `-h/--help` and `-V/--version` arguments based on settings.
+   * These are special arguments handled by the parser to trigger help/version output.
+   */
+  private injectBuiltinArgs(): void {
+    // Inject help arg if HelpFlag is set and no user-defined help arg exists
+    if (this.isSet(CommandSettings.HelpFlag)) {
+      const hasHelpArg = [...this.args.values()].some(
+        (a) => a.action === ArgAction.Help,
+      );
+      if (!hasHelpArg) {
+        const helpArg = new Arg({
+          id: "__help__",
+          short: "h",
+          long: "help",
+          help: "Print help",
+          action: ArgAction.Help,
+        });
+        this.args.set(helpArg.id!, helpArg);
+      }
+    }
+
+    // Inject version arg if VersionFlag is set, version is available, and no user-defined version arg exists
+    if (this.isSet(CommandSettings.VersionFlag) && this.version) {
+      const hasVersionArg = [...this.args.values()].some(
+        (a) => a.action === ArgAction.Version,
+      );
+      if (!hasVersionArg) {
+        const versionArg = new Arg({
+          id: "__version__",
+          short: "V",
+          long: "version",
+          help: "Print version",
+          action: ArgAction.Version,
+        });
+        this.args.set(versionArg.id!, versionArg);
+      }
+    }
+  }
+
+  /**
    * Finalizes the command and subcommand tree.
    * This is a critical pre-computation step that propagates global arguments and settings
    * down the tree, preventing expensive lookups during the parsing hot path.
@@ -168,6 +232,24 @@ export class Command {
   public finalize(): void {
     if (this.isFinalized) {
       return;
+    }
+
+    // Inject built-in help/version args
+    this.injectBuiltinArgs();
+
+    // Populate groups from args that declare membership
+    for (const arg of this.args.values()) {
+      if (arg.group) {
+        let group = this.groups.get(arg.group);
+        if (!group) {
+          group = { id: arg.group, args: [] };
+          this.groups.set(arg.group, group);
+        }
+        if (!group.args) group.args = [];
+        if (!group.args.includes(arg.id!)) {
+          group.args.push(arg.id!);
+        }
+      }
     }
 
     // Propagate properties from the parent command.

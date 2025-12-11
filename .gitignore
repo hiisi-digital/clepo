@@ -2,4 +2,4 @@
 cov_profile
 coverage
 
-docs_ref/
+docs_ref/*.html

@@ -1,135 +1,134 @@
 // loru/packages/clepo/arg.ts
 
-/**
- * A function that takes a raw string argument from the command line
- * and parses it into a specific type, potentially throwing an error if validation fails.
- * @template T The type to parse the string into.
- */
-// deno-lint-ignore no-explicit-any
-export type ValueParser<T = any> = (value: string) => T;
+import { reflect, type ReflectType } from "./reflect.ts";
 
 /**
- * Defines the behavior to be taken when an argument is encountered by the parser.
+ * The action to perform when an argument is found.
  * This is the TypeScript equivalent of `clap::ArgAction`.
  */
 export enum ArgAction {
-  /**
-   * Stores a single value. This is the default action for most arguments.
-   * @example --name "Alice"
-   */
-  Set = "set",
-  /**
-   * Appends a value to a list. Can be used multiple times.
-   * @example --item 1 --item 2
-   */
-  Append = "append",
-  /**
-   * Stores `true` if the flag is present.
-   * @example --verbose
-   */
-  SetTrue = "setTrue",
-  /**
-   * Stores `false` if the flag is present.
-   * @example --no-color
-   */
-  SetFalse = "setFalse",
-  /**
-   * Increments a counter each time the flag is present.
-   * @example -vvv
-   */
-  Count = "count",
-  /**
-   * Prints the help message and exits.
-   * @example --help
-   */
-  Help = "help",
-  /**
-   * Prints the version message and exits.
-   * @example --version
-   */
-  Version = "version",
+  /** Stores the value. */
+  Set,
+  /** Appends the value to a list. */
+  Append,
+  /** Stores `true`. */
+  SetTrue,
+  /** Stores `false`. */
+  SetFalse,
+  /** Increments a counter. */
+  Count,
+  /** Triggers the help message. */
+  Help,
+  /** Triggers the version message. */
+  Version,
 }
 
 /**
- * Configuration for a command-line argument (a flag, option, or positional).
- * This is the primary interface for defining arguments and is used with the `@Arg` decorator.
- * It is the TypeScript equivalent of `clap::Arg`.
+ * Configuration for a command-line argument.
+ * This is a hybrid of `clap::Arg` and the `clap_derive::Arg` attribute.
  */
-export interface Arg {
-  /**
-   * The unique identifier for this argument.
-   * Corresponds to the property name on the class. This is set automatically by the decorator.
-   */
-  id?: string;
+export class Arg {
+  /** A unique identifier for the argument, typically the class property name. */
+  public id?: string;
+  /** The short flag, e.g., 'c' for `-c`. */
+  public short?: string;
+  /** The long flag, e.g., 'config' for `--config`. */
+  public long?: string;
+  /** The help text for the argument. */
+  public help?: string;
+  /** The action to perform when the argument is found. */
+  public action?: ArgAction;
+  /** Whether the argument is required. */
+  public required?: boolean;
+  /** The default value for the argument. */
+  // deno-lint-ignore no-explicit-any
+  public default?: any;
+  /** The environment variable to read from if the argument is not present. */
+  public env?: string;
+  /** The name of the value, used in the help message (e.g., `<FILE>`). */
+  public valueName?: string;
+  /** A list of possible values for the argument. */
+  public possibleValues?: string[];
+  /** A function to parse and validate the value. */
+  // deno-lint-ignore no-explicit-any
+  public valueParser?: ((value: string) => any) | "number" | "file";
+  /** The property type, inferred via reflection. */
+  public type?: "string" | "number" | "boolean" | "list";
+  /** The zero-based index for a positional argument. */
+  public index?: number;
+  /** If `true`, this argument is passed down to subcommands. */
+  public global?: boolean;
+  /** The group this argument belongs to. */
+  public group?: string;
+  /** Arguments that conflict with this argument. */
+  public conflictsWith?: string[];
+
+  constructor(config: Partial<Arg> = {}) {
+    Object.assign(this, config);
+  }
 
   /**
-   * The short flag character (e.g. 'v' for -v).
+   * Initializes the argument from decorator metadata and reflection.
+   * This is called by the `@Arg` decorator.
    */
-  short?: string;
+  public init(
+    target: object,
+    propertyKey: string,
+  ): void {
+    this.id = propertyKey;
+
+    const reflectedType = reflect.getType(target, propertyKey);
+    this.inferFromType(reflectedType);
+  }
 
   /**
-   * The long flag name (e.g. 'verbose' for --verbose).
-   * If set to `true`, the property name will be used (kebab-cased).
+   * Infers argument properties (`action`, `type`, `valueName`) from the
+   * reflected TypeScript type of the class property.
    */
-  long?: string | boolean;
+  private inferFromType(type: ReflectType | undefined): void {
+    if (!type) {
+      return;
+    }
+
+    this.valueName = this.valueName ?? type.name.toUpperCase();
+
+    switch (type.name) {
+      case "String":
+        this.type = "string";
+        this.action = this.action ?? ArgAction.Set;
+        break;
+      case "Number":
+        this.type = "number";
+        this.action = this.action ?? ArgAction.Set;
+        break;
+      case "Boolean":
+        this.type = "boolean";
+        // The default action for a boolean is `SetTrue`, which doesn't take a value.
+        // This allows `--verbose` instead of `--verbose=true`.
+        // If the user wants `Set`, they must be explicit.
+        this.action = this.action ?? ArgAction.SetTrue;
+        break;
+      case "Array":
+        this.type = "list";
+        this.action = this.action ?? ArgAction.Append;
+        break;
+    }
+  }
 
   /**
-   * Short description shown in help text.
+   * Checks if the argument is positional (i.e., has no short or long flag).
    */
-  help?: string;
+  public isPositional(): boolean {
+    return !this.short && !this.long;
+  }
 
   /**
-   * Longer description shown in the detailed help text (`--help`).
+   * Determines if the argument's action requires a value.
+   * e.g., `Set` and `Append` require a value, but `SetTrue` and `Count` do not.
    */
-  longHelp?: string;
-
-  /**
-   * The name of an environment variable to check if the argument is not present.
-   */
-  env?: string;
-
-  /**
-   * Whether this argument must be provided by the user.
-   */
-  required?: boolean;
-
-  /**
-   * The default value to use if the argument is not provided.
-   */
-  default?: unknown;
-
-  /**
-   * The expected type of the argument's value.
-   * This is used for basic parsing if no `valueParser` is provided.
-   * In the decorator-based API, this is often inferred from the property's type.
-   */
-  type?: "string" | "number" | "boolean" | "list";
-
-  /**
-   * The action to take when the argument is encountered.
-   * Defaults are inferred from the property type (e.g. a `boolean` property defaults to `SetTrue`).
-   */
-  action?: ArgAction;
-
-  /**
-   * A custom function or a string identifier for a built-in parser to validate and/or transform the value.
-   */
-  valueParser?: ValueParser | "number" | "file";
-
-  /**
-   * A list of allowed values for this argument. The parser will reject any input that is not in this list.
-   */
-  possibleValues?: string[];
-
-  /**
-   * If `true`, this argument is inherited by all subcommands.
-   */
-  global?: boolean;
-
-  /**
-   * The explicit index for a positional argument. Positional arguments are ordered by their index.
-   * If this property is omitted and the argument has no `short` or `long` name, it is considered a positional argument
-   * and its order is determined by its declaration order in the class.
-   */
-  index?: number;
+  public takesValue(): boolean {
+    const action = this.action ??
+      (this.type === "boolean" ? ArgAction.SetTrue : ArgAction.Set);
+    return action === ArgAction.Set || action === ArgAction.Append;
+  }
 }
