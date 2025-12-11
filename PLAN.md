@@ -4,170 +4,376 @@
 **Philosophy**: Strict adherence to `clap`'s architecture, terminology, and
 behavior where possible, adapted for TypeScript idioms.
 
-## Feature Matrix (Post-v0.2)
+> **Current Version**: 0.4.0
+> **Last Updated**: Post-refactor with comprehensive clap analysis
 
-| Feature                   | Clap (Rust)              | Clepo (TS)                  | Status | Notes                                                                            |
-| :------------------------ | :----------------------- | :-------------------------- | :----- | :------------------------------------------------------------------------------- |
-| **API Style**             | `#[derive(Parser)]`      | `@Command`                  | ✅     | Core decorator API refactored to align with `clap`'s derive model.               |
-| **Subcommands**           | `#[command(subcommand)]` | `@Subcommand(...)`          | ✅     | Supported via `@Subcommand` decorator.                                           |
-| **Positional Args**       | `#[arg]` (no flags)      | `@Arg`                      | ✅     | Inferred from `@Arg` decorator when `short` or `long` are absent.                |
-| **Named Options**         | `#[arg(short, long)]`    | `@Arg({ short, long })`     | ✅     | Consolidated into `@Arg` decorator.                                              |
-| **Global Arguments**      | `global = true`          | `global: true`              | ✅     | Supported in `@Arg` config.                                                      |
-| **Aliases**               | `visible_aliases`        | `aliases: []`               | ✅     | Supported in `@Command` config for subcommands.                                  |
-| **Boolean Flags**         | `action = SetTrue`       | `action: ArgAction.SetTrue` | ✅     | Inferred from `boolean` type, or can be set explicitly.                          |
-| **Auto-Help**             | `-h`, `--help`           | `-h`, `--help`              | ✅     | Clap-style formatting and coloring complete.                                     |
-| **Version Flag**          | `-V`, `--version`        | `-V`, `--version`           | ✅     | Auto-handled by the parser.                                                      |
-| **Environment Variables** | `env = "MY_VAR"`         | `env: "MY_VAR"`             | ✅     | Supported in `@Arg` config.                                                      |
-| **Default Values**        | `default_value = "x"`    | `default: 'x'`              | ✅     | Supported in `@Arg` config and reflected in help text.                           |
-| **Value Validation**      | `value_parser`           | `valueParser: fn`           | ✅     | Support for custom functions and `number` parser complete.                       |
-| **Enumerated Values**     | `value_enum`             | `possibleValues`            | ✅     | Supported via `possibleValues` in `@Arg` and the `@ValueEnum` decorator.         |
-| **Collections**           | `Vec<T>`                 | `action: ArgAction.Append`  | ✅     | Supported via `action: ArgAction.Append`.                                        |
-| **Argument Groups**       | `ArgGroup`               | `group`, `conflictsWith`    | ⚠️     | Basic support for groups and conflicts. Needs more comprehensive testing.        |
-| **Value Delimiters**      | `value_delimiter = ','`  | ❌                          | ❌     | Missing. Handling lists via comma separation vs multiple flags.                  |
-| **Shell Completions**     | `clap_complete`          | ❌                          | ❌     | Missing. Generation of scripts for bash/zsh/fish.                                |
-| **Man Page Generation**   | `clap_mangen`            | ❌                          | ❌     | Missing. Documentation generation.                                               |
-| **Colored Help**          | `color` feature          | ✅                          | ✅     | ANSI styling for help output is implemented.                                     |
-| **Suggestions**           | "Did you mean...?"       | ❌                          | ❌     | Missing. Levenshtein distance for typos.                                         |
-| **Custom Usage**          | `override_usage`         | ❌                          | ❌     | Missing. Ability to override the auto-generated usage string.                    |
+---
 
-## 1. Terminology & Alignment
+## Feature Matrix
 
-To reduce cognitive load for developers moving between Rust and TypeScript,
-`clepo` will adopt `clap`'s terminology.
+### Core Features
 
-| Concept          | Clap (Rust)         | Clepo (TS)    | Definition                                                                         |
-| :--------------- | :------------------ | :------------ | :--------------------------------------------------------------------------------- |
-| **Command**      | `Command`           | `Command`     | The primary building block. Represents the application or a subcommand.            |
-| **Argument**     | `Arg`               | `Arg`         | A single command-line argument (flag, option, or positional).                      |
-| **Command**      | `#[derive(Parser)]` | `@Command`    | The primary decorator for struct/class-based CLI definition.                       |
-| **Action**       | `ArgAction`         | `ArgAction`   | Logic to execute when an argument is encountered (e.g., `Set`, `Append`, `Count`). |
-| **Value Parser** | `ValueParser`       | `ValueParser` | Validation and typing logic (e.g., `range`, `file_path`).                          |
-| **Arg Group**    | `ArgGroup`          | `ArgGroup`    | Defines relationships like exclusion (XOR) or requirements (AND).                  |
+| Feature                   | Clap (Rust)              | Clepo (TS)                  | Status | Notes                                     |
+| :------------------------ | :----------------------- | :-------------------------- | :----- | :---------------------------------------- |
+| **Builder API**           | `Command::new()`         | `new Command()`             | ✅     | Imperative command construction           |
+| **Derive API**            | `#[derive(Parser)]`      | `@CommandDecorator`         | ✅     | Decorator-based declarative API           |
+| **Subcommands**           | `#[command(subcommand)]` | `@Subcommand(...)`          | ✅     | Nested command hierarchies                |
+| **Positional Args**       | `#[arg]` (no flags)      | `@Arg` (no short/long)      | ✅     | Inferred from absence of flags            |
+| **Named Options**         | `#[arg(short, long)]`    | `@Arg({ short, long })`     | ✅     | Short and long flag support               |
+| **Global Arguments**      | `global = true`          | `global: true`              | ✅     | Propagated to all subcommands             |
+| **Aliases**               | `visible_aliases`        | `aliases: []`               | ✅     | Subcommand aliases                        |
+| **Boolean Flags**         | `action = SetTrue`       | `action: ArgAction.SetTrue` | ✅     | Inferred from `boolean` type              |
+| **Auto-Help**             | `-h`, `--help`           | `-h`, `--help`              | ✅     | Auto-injected, clap-style formatting      |
+| **Version Flag**          | `-V`, `--version`        | `-V`, `--version`           | ✅     | Auto-injected when version is set         |
+| **Colored Help**          | `color` feature          | ANSI styling                | ✅     | Yellow headings, green literals           |
+| **Environment Variables** | `env = "MY_VAR"`         | `env: "MY_VAR"`             | ✅     | Fallback when CLI arg not provided        |
+| **Default Values**        | `default_value = "x"`    | `default: 'x'`              | ✅     | Shown in help text                        |
+| **Value Validation**      | `value_parser`           | `valueParser: fn`           | ✅     | Custom functions and `"number"` built-in  |
+| **Enumerated Values**     | `value_enum`             | `possibleValues: []`        | ✅     | Also `@ValueEnum` decorator               |
+| **Collections**           | `Vec<T>`                 | `action: ArgAction.Append`  | ✅     | Inferred from `string[]` type             |
+| **Escape Sequence**       | `--`                     | `--`                        | ✅     | All subsequent args treated as positional |
+| **Short Clusters**        | `-abc`                   | `-abc`                      | ✅     | Cluster of short flags                    |
+| **Attached Values**       | `-n4`, `--name=val`      | `-n4`, `--name=val`         | ✅     | Value attached to flag                    |
+| **Conflicts**             | `conflicts_with`         | `conflictsWith: []`         | ✅     | Mutual exclusivity                        |
 
-## 2. Architecture
+### ArgAction Support
 
-The architecture maps to `clap`'s split between the "Builder" API (imperative)
-and the "Derive" API (declarative).
+| Action      | Clap               | Clepo                | Status | Notes                          |
+| :---------- | :----------------- | :------------------- | :----- | :----------------------------- |
+| `Set`       | Store single value | `ArgAction.Set`      | ✅     | Default for strings/numbers    |
+| `Append`    | Collect into Vec   | `ArgAction.Append`   | ✅     | Default for arrays             |
+| `SetTrue`   | Store `true`       | `ArgAction.SetTrue`  | ✅     | Default for booleans           |
+| `SetFalse`  | Store `false`      | `ArgAction.SetFalse` | ✅     | Explicit opt-in                |
+| `Count`     | Increment counter  | `ArgAction.Count`    | ✅     | For `-vvv` style verbosity     |
+| `Help`      | Display help       | `ArgAction.Help`     | ✅     | Auto-injected                  |
+| `HelpShort` | Display short help | ❌                   | ❌     | Not yet implemented            |
+| `HelpLong`  | Display long help  | ❌                   | ❌     | Not yet implemented            |
+| `Version`   | Display version    | `ArgAction.Version`  | ✅     | Auto-injected when version set |
 
-### 2.1 Core: The Builder (`clepo/builder`)
+### Advanced Features
 
-This is the foundation. It should work independently of decorators.
+| Feature                    | Clap                             | Clepo                  | Status | Notes                                 |
+| :------------------------- | :------------------------------- | :--------------------- | :----- | :------------------------------------ |
+| **Argument Groups**        | `ArgGroup`                       | `group`, `groups: Map` | ⚠️     | Basic support, needs `requires` field |
+| **Value Delimiters**       | `value_delimiter = ','`          | ❌                     | ❌     | Parse `--file a,b,c` as array         |
+| **Num Args**               | `num_args(1..=3)`                | ❌                     | ❌     | Specify min/max values                |
+| **Last Positional**        | `last = true`                    | ❌                     | ❌     | Must come after `--`                  |
+| **Trailing Var Arg**       | `trailing_var_arg = true`        | ❌                     | ❌     | Capture all remaining                 |
+| **Allow Hyphen Values**    | `allow_hyphen_values = true`     | ❌                     | ❌     | Accept `-1` as value not flag         |
+| **Allow Negative Numbers** | `allow_negative_numbers`         | Partial                | ⚠️     | Lexer detects but not configurable    |
+| **Hide from Help**         | `hide = true`                    | ❌                     | ❌     | Internal args                         |
+| **Requires**               | `requires = "other"`             | ❌                     | ❌     | Conditional requirement               |
+| **Required If**            | `required_if_eq`                 | ❌                     | ❌     | Conditional requirement               |
+| **External Subcommands**   | `allow_external_subcommands`     | ❌                     | ❌     | Treat unknown as subcommand           |
+| **Subcommand Precedence**  | `subcommand_precedence_over_arg` | ❌                     | ❌     | Parsing priority                      |
+| **Suggestions**            | "Did you mean...?"               | ❌                     | ❌     | Levenshtein distance for typos        |
+| **Custom Usage**           | `override_usage`                 | ❌                     | ❌     | Override auto-generated usage         |
+| **Shell Completions**      | `clap_complete`                  | ❌                     | ❌     | bash/zsh/fish scripts                 |
+| **Man Page Generation**    | `clap_mangen`                    | ❌                     | ❌     | roff format                           |
 
-- **`Command` Class**:
-  - Properties: `name`, `version`, `about`, `subcommands`, `args`.
-  - Methods: `arg()`, `subcommand()`, `group()`, `getMatches()`.
-  - _Internal_: Manages the graph of commands.
+### Value Parser Types
 
-- **`Arg` Class**:
-  - Properties: `id`, `short`, `long`, `help`, `action`, `value_parser`,
-    `default_value`.
-  - _Internal_: Defines how to parse a specific token.
+| Parser               | Clap                        | Clepo                   | Status | Notes                      |
+| :------------------- | :-------------------------- | :---------------------- | :----- | :------------------------- |
+| **String**           | `String`                    | Default                 | ✅     | No parsing needed          |
+| **Number**           | `i64`, `u64`, `f64`         | `valueParser: "number"` | ✅     | Basic number parsing       |
+| **Boolean**          | `bool`                      | `"true"`/`"false"`      | ✅     | Strict parsing             |
+| **Boolish**          | `BoolishValueParser`        | ❌                      | ❌     | yes/no, 1/0, on/off        |
+| **Ranged Integer**   | `RangedI64ValueParser`      | ❌                      | ❌     | `.range(0..100)`           |
+| **Non-Empty String** | `NonEmptyStringValueParser` | ❌                      | ❌     | Reject empty strings       |
+| **Path**             | `PathBuf`                   | `valueParser: "file"`   | ⚠️     | Placeholder, not validated |
+| **Custom Function**  | `Fn(&str) -> Result<T, E>`  | `(val: string) => T`    | ✅     | Full custom parsing        |
 
-- **Lexer & Parser**:
-  - Replace `std/flags` with a custom state-machine lexer inspired by
-    `clap_lex`.
-  - Needs to distinguish `--flag=value`, `--flag value`, `-fvalue`, `-f=value`,
-    and `-f` (boolean).
+---
 
-### 2.2 Interface: The Decorators (`clepo/derive`)
+## Architecture
 
-This layer uses TypeScript decorators to generate the Builder graph at runtime.
+### Clap's Multi-Crate Structure (Reference)
 
-- **`@Command(config)`**: Marks a class as a CLI entry point. Equivalent to
-  `#[derive(Parser)]`.
-- **`@Subcommand(classes)`**: Registers subcommand classes.
-- **`@Arg(config)`**: Marks a property as an argument.
-  - Unlike the current `@Option` vs `@Arg`, we will use a single `@Arg`
-    decorator.
-  - Distinction between Positional and Named is inferred or explicit via `index`
-    property, just like `clap`.
-- **`@ValueEnum`**: Marks a TypeScript Enum as a valid set of inputs.
+```
+clap (facade)
+├── clap_builder (core)
+│   ├── builder/   (Command, Arg, ArgGroup, etc.)
+│   ├── parser/    (Parser, ArgMatcher, Validator)
+│   ├── error/     (Error types, formatting)
+│   └── output/    (Help, Usage, Completions)
+├── clap_derive (proc macro)
+├── clap_lex (tokenizer)
+├── clap_complete (shell completions)
+└── clap_mangen (man pages)
+```
 
-## 3. Proposed API (v0.2)
+### Clepo's Module Structure
+
+```
+clepo
+├── mod.ts         (public API facade)
+├── command.ts     (Command builder class)
+├── arg.ts         (Arg class, ArgAction enum)
+├── decorators.ts  (@CommandDecorator, @Arg, @Subcommand, @ValueEnum)
+├── parser.ts      (Parser, recursive descent)
+├── arg_matcher.ts (ArgMatcher, ArgMatches)
+├── lexer.ts       (RawArgs, ParsedArg, ShortFlags)
+├── help.ts        (HelpGenerator, styling)
+├── error.ts       (ClepoError, ErrorKind)
+├── reflect.ts     (Metadata management)
+└── types.ts       (Context, Helper interfaces)
+```
+
+### Phase Separation
+
+Following clap's design, clepo separates parsing into distinct phases:
+
+1. **Build Phase**: Decorators attach metadata to classes
+2. **Finalize Phase**: `Command.finalize()` propagates globals, injects help/version
+3. **Parse Phase**: `Parser.parse()` tokenizes and builds `ArgMatches`
+4. **Validate Phase**: Check required args, groups, conflicts
+5. **Hydrate Phase**: Apply `ArgMatches` to user class instance
+
+---
+
+## Terminology Alignment
+
+| Concept         | Clap (Rust)         | Clepo (TS)          | Definition                                     |
+| :-------------- | :------------------ | :------------------ | :--------------------------------------------- |
+| **Command**     | `Command`           | `Command`           | Application or subcommand                      |
+| **Arg**         | `Arg`               | `Arg`               | Single CLI argument (flag, option, positional) |
+| **Parser**      | `#[derive(Parser)]` | `@CommandDecorator` | Main entry point decorator                     |
+| **ArgAction**   | `ArgAction`         | `ArgAction`         | Behavior when arg is encountered               |
+| **ValueParser** | `ValueParser`       | `valueParser`       | Validation and type conversion                 |
+| **ArgGroup**    | `ArgGroup`          | `ArgGroup`          | Relationships between args                     |
+| **ArgMatches**  | `ArgMatches`        | `ArgMatches`        | Parsed result container                        |
+
+---
+
+## Deno-Specific Considerations
+
+### Decorator Strategy
+
+> **Research Completed**: January 2025 - See `/research/00-SUMMARY.md` for full details.
+
+TypeScript's `experimentalDecorators` is deprecated in favor of TC39 Stage 3
+decorators. After extensive research into TC39, TypeScript, Deno, and alternative
+metaprogramming approaches (macros, attributes, etc.), the conclusion is clear:
+
+**Decorators are the only viable path. No alternatives are coming.**
+
+#### Key Findings
+
+| Topic                   | Finding                                                                  |
+| ----------------------- | ------------------------------------------------------------------------ |
+| First-class Attributes  | ❌ No TC39 or TypeScript plans for C#-style attributes                   |
+| Macro System            | ❌ No TC39 proposal; Bun macros are Bun-only; Babel macros require Babel |
+| TypeScript Philosophy   | Types are "fully erasable" - no runtime type info by design              |
+| TC39 Decorators         | ✅ Stage 3, implemented in TypeScript 5.0+                               |
+| TC39 Decorator Metadata | ✅ Stage 3, implemented in TypeScript 5.2+ via `Symbol.metadata`         |
+| Automatic Type Info     | ❌ TC39 decorators do NOT provide `design:type` equivalent               |
+
+#### The Hybrid Approach (Recommended)
+
+clepo will support both decorator systems with the following priority:
+
+1. **Prefer `Symbol.metadata`** (TC39 standard) when available
+2. **Fall back to `Reflect.getMetadata`** (legacy) when not
+3. **Always support explicit `type` config** as an override
+4. **Use default values** to infer types when possible
 
 ```typescript
-import { Arg, ArgAction, Command, Subcommand } from "clepo";
-
-// Subcommand Definition
-@Command({ about: "Add file contents to the index" })
-class Add {
-  @Arg({ help: "Files to add", required: true, action: ArgAction.Append })
-  pathspec!: string[]; // Positional because no 'short' or 'long' specified
-REA
-  @Arg({ short: "n", long: true, help: "Dry run" })
-  dryRun: boolean = false;
-}
-
-// Main Application
-@Command({
-  name: "git",
-  version: "2.40.0",
-  about: "A stupid content tracker",
-  propagateVersion: true,
-})
-class Git {
-  // Global Flag
-  @Arg({ short: "v", long: true, action: ArgAction.Count, global: true })
-  verbose!: number;
-
-  @Arg({ long: "config", env: "GIT_CONFIG" })
-  configPath?: string;
-
-  // Subcommands
-  @Subcommand([Add])
-  command!: Add; // The matched subcommand instance is injected here
+// Detection logic for hybrid support
+function getCommandMetadata(Class: new () => unknown) {
+  // TC39 approach (preferred)
+  if (Symbol.metadata && Class[Symbol.metadata]) {
+    return Class[Symbol.metadata];
+  }
+  // Legacy approach (fallback)
+  if (typeof Reflect !== "undefined" && Reflect.getMetadata) {
+    return {
+      args: Reflect.getMetadata("args", Class) ?? [],
+      options: Reflect.getMetadata("options", Class) ?? [],
+    };
+  }
+  throw new Error("No metadata available");
 }
 ```
 
-## 4. Implementation Phases
+#### Ecosystem Status
 
-### Phase 1: Core Architecture Rewrite (v0.2)
+| Framework       | Current Approach         | TC39 Migration |
+| --------------- | ------------------------ | -------------- |
+| NestJS          | `experimentalDecorators` | Not yet        |
+| TypeORM         | `experimentalDecorators` | Not yet        |
+| class-validator | `experimentalDecorators` | Not yet        |
+| Angular         | `experimentalDecorators` | In progress    |
+| Lit             | TC39 decorators          | ✅ Complete    |
 
-**Goal**: Establish the `Command` and `Arg` structures and the aligned Decorator
-API.
+**Current Approach**: Continue using `experimentalDecorators` with the deprecation
+warning. Plan for hybrid support in v0.5.x. Monitor ecosystem migration.
 
-1. **Refactor `types.ts`**:
-   - The interface for command configuration will be named `CommandConfig`. ✅
-   - Rename `ArgConfig` -> `Arg`. ✅
-   - Add `ArgAction` enum (`Set`, `Append`, `SetTrue`, `SetFalse`, `Count`,
-     `Help`, `Version`). ✅
-2. **Refactor `decorators.ts`**:
-   - Deprecate/Remove `@Option` and the original `@Command` decorator. ✅
-   - Implement the new `@Command`, `@Subcommand`, and `@Arg` decorators. ✅
-   - Implement Reflection logic to map Property Types to `ArgAction` defaults
-     (e.g., `boolean` -> `SetTrue`, `number` -> `Set` or `Count`??). ✅
-3. **Refactor `app.ts` -> `Cli.ts`**:
-   - Re-implement the runtime loop. ✅
-   - Basic "Positional vs Flag" logic using the new structures. ✅
+### No JIT Compiler Hints
 
-### Phase 2: Robust Parsing & Validation (v0.3)
+Unlike Rust's `#[cold]`, `#[inline]`, etc., Deno/V8 handles optimization
+automatically. There are no decorator-based JIT hints available.
 
-**Goal**: Replace `std/flags` and implement `ValueParser`.
+### Best Practices Applied
 
-1. **Lexer**: Implement `Lexer` to handle `short` clusters (`-xvf`) and `long`
-   values correctly. ✅
-2. **ValueParser**:
-   - Add `valueParser` option to `@Arg`. ✅
-   - Implement built-ins: `valueParser: 'number'`, `valueParser: 'file'`. ✅
-     (`number` only)
-   - Support custom functions: `(val: string) => T`. ✅
-3. **Environment Variables**: Support `env` key in `@Arg`. ✅
+- ✅ Bare specifiers via `deno.json` imports
+- ✅ JSR-compatible module structure
+- ✅ `@std/` packages instead of `deno.land/std` URLs
+- ✅ Strict TypeScript mode
+- ✅ Zero lint errors
 
-### Phase 3: Polish & Help (v0.4)
+---
 
-**Goal**: formatting and display.
+## Roadmap
 
-1. **Help Generation**:
-   - Auto-generate Usage string. ✅
-   - Format help text similar to `clap` (aligned columns). ✅
-   - Support colored output (ANSI). ✅
-2. **Version**:
-   - Auto-implement `-V` / `--version`. ✅
+### v0.4.1 (Current - Code Quality & Cleanup)
 
-## 5. Migration Guide (Internal)
+- [x] Fix metadata lookup bug
+- [x] Auto-inject help/version args
+- [x] Comprehensive test suite (47 tests)
+- [x] Update documentation
+- [x] Research TC39 decorators, macros, and alternatives (see `/research/`)
+- [x] Add modern Deno linting rules
+- [x] Add formatting configuration
+- [x] Code cleanup and refactor pass
+- [x] Remove any code smells
+- [x] Ensure all exports are properly typed
+- [x] Add explicit `type` option to `@Arg` decorator (future-proofing)
+- [x] Update version to 0.4.1
 
-- `@Command` -> `@Command` (New API)
-- `@Option` -> `@Arg({ long: true })`
-- `@Arg` (Positional) -> `@Arg` (no flags)
-- `subcommands: []` in config -> `@Subcommand` decorator on a property
-  (preferred) or class level config.
+### v0.4.x (Stabilization)
+
+- [ ] Add more value parser types (boolish, ranged)
+- [ ] Implement "Did you mean...?" suggestions
+- [ ] `hide` option for internal args
+
+### v0.5.0 (TC39 Hybrid + Advanced Args)
+
+- [ ] Implement hybrid decorator detection (`Symbol.metadata` + `Reflect.getMetadata`)
+- [ ] Add polyfill for `Symbol.metadata` if needed
+- [ ] `num_args` - specify value count range
+- [ ] `value_delimiter` - comma-separated values
+- [ ] `last` - must come after `--`
+- [ ] `trailing_var_arg` - capture all remaining
+- [ ] `requires` - conditional requirements
+
+### v0.6.0 (Polish)
+
+- [ ] Help subcommand (`myapp help subcommand`)
+- [ ] `HelpShort` / `HelpLong` actions
+- [ ] Custom usage string override
+- [ ] Error formatting improvements
+- [ ] `args_override_self` setting
+
+### v1.0.0 (Production Ready)
+
+- [ ] Shell completion generation
+- [ ] Comprehensive documentation
+- [ ] Performance benchmarks
+- [ ] Full TC39 decorator support with `Symbol.metadata`
+- [ ] Consider deprecating legacy decorator fallback (based on ecosystem state)
+
+### Future (Post-1.0)
+
+- [ ] Man page generation
+- [ ] i18n support
+- [ ] WASM support
+- [ ] `accessor` keyword support for type inference from defaults
+
+---
+
+## API Examples
+
+### Decorator API (Recommended)
+
+```typescript
+import { Arg, ArgAction, Cli, CommandDecorator, Subcommand } from "@loru/clepo";
+
+@CommandDecorator({ about: "Add files to staging" })
+class AddCmd {
+  @Arg({ required: true, action: ArgAction.Append })
+  files!: string[];
+
+  @Arg({ short: "f", long: true, help: "Force add" })
+  force = false;
+
+  async run() {
+    console.log(`Adding ${this.files.length} files, force=${this.force}`);
+  }
+}
+
+@CommandDecorator({
+  name: "git",
+  version: "2.40.0",
+  about: "A stupid content tracker",
+})
+class Git {
+  @Arg({ short: "v", long: true, action: ArgAction.Count, global: true })
+  verbose = 0;
+
+  @Subcommand([AddCmd])
+  command!: AddCmd;
+
+  async run() {
+    console.log(`Verbosity: ${this.verbose}`);
+  }
+}
+
+await Cli.run(Git);
+```
+
+### Builder API
+
+```typescript
+import { ArgAction, ArgBuilder, Command } from "@loru/clepo";
+
+class GitInstance {
+  verbose = 0;
+  async run() {
+    console.log(`Verbosity: ${this.verbose}`);
+  }
+}
+
+const git = new Command("git")
+  .setVersion("2.40.0")
+  .setAbout("A stupid content tracker")
+  .addArg(
+    new ArgBuilder({
+      id: "verbose",
+      short: "v",
+      long: "verbose",
+      action: ArgAction.Count,
+      global: true,
+    }),
+  );
+
+git.cls = GitInstance;
+await git.run();
+```
+
+---
+
+## Testing
+
+```bash
+# Run all tests
+deno test tests/ --allow-read
+
+# Type check
+deno check mod.ts
+
+# Lint
+deno lint
+```
+
+Current test coverage: 42 tests covering all major features.
+
+---
+
+## Contributing
+
+1. Follow clap's patterns where applicable
+2. Maintain phase separation (build → finalize → parse → validate → hydrate)
+3. All code must pass `deno lint` and `deno check`
+4. Add tests for new features
+5. Update PLAN.md and ANALYSIS.md as needed

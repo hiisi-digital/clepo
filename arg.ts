@@ -84,34 +84,65 @@ export class Arg {
   /**
    * Infers argument properties (`action`, `type`, `valueName`) from the
    * reflected TypeScript type of the class property.
+   *
+   * Note: Explicit configuration always takes precedence over reflection.
+   * This is important for:
+   * 1. Future TC39 decorators (which don't support emitDecoratorMetadata)
+   * 2. Cases where reflection is unavailable or incorrect
+   * 3. User preference to override inferred types
    */
   private inferFromType(type: ReflectType | undefined): void {
-    if (!type) {
+    // If type was explicitly set in config, don't override it
+    const explicitType = this.type;
+
+    if (!type && !explicitType) {
       return;
     }
 
-    this.valueName = this.valueName ?? type.name.toUpperCase();
+    // Infer from reflection if no explicit type was provided
+    if (!explicitType && type) {
+      switch (type.name) {
+        case "String":
+          this.type = "string";
+          break;
+        case "Number":
+          this.type = "number";
+          break;
+        case "Boolean":
+          this.type = "boolean";
+          break;
+        case "Array":
+          this.type = "list";
+          break;
+      }
+    }
 
-    switch (type.name) {
-      case "String":
-        this.type = "string";
-        this.action = this.action ?? ArgAction.Set;
-        break;
-      case "Number":
-        this.type = "number";
-        this.action = this.action ?? ArgAction.Set;
-        break;
-      case "Boolean":
-        this.type = "boolean";
-        // The default action for a boolean is `SetTrue`, which doesn't take a value.
-        // This allows `--verbose` instead of `--verbose=true`.
-        // If the user wants `Set`, they must be explicit.
-        this.action = this.action ?? ArgAction.SetTrue;
-        break;
-      case "Array":
-        this.type = "list";
-        this.action = this.action ?? ArgAction.Append;
-        break;
+    // Set valueName based on type (explicit or inferred)
+    if (!this.valueName) {
+      if (type) {
+        this.valueName = type.name.toUpperCase();
+      } else if (this.type) {
+        this.valueName = this.type.toUpperCase();
+      }
+    }
+
+    // Set default action based on type (explicit or inferred)
+    if (this.action === undefined) {
+      switch (this.type) {
+        case "string":
+        case "number":
+          this.action = ArgAction.Set;
+          break;
+        case "boolean":
+          // The default action for a boolean is `SetTrue`, which doesn't take a value.
+          // This allows `--verbose` instead of `--verbose=true`.
+          // If the user wants `Set`, they must be explicit.
+          this.action = ArgAction.SetTrue;
+          break;
+        case "list":
+          this.action = ArgAction.Append;
+          break;
+      }
     }
   }
 

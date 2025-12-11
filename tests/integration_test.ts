@@ -1,19 +1,10 @@
 // loru/packages/clepo/tests/integration_test.ts
 
-import {
-    assertEquals,
-    assertInstanceOf,
-    assertThrows,
-} from "@std/assert";
+import { assertEquals, assertInstanceOf, assertThrows } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import { ArgAction, Arg as ArgClass } from "../arg.ts";
+import { Arg as ArgClass, ArgAction } from "../arg.ts";
 import { Command, CommandSettings } from "../command.ts";
-import {
-    Arg,
-    Command as CommandDecorator,
-    getCommand,
-    Subcommand,
-} from "../decorators.ts";
+import { Arg, Command as CommandDecorator, getCommand, Subcommand } from "../decorators.ts";
 import { ClepoError, ErrorKind } from "../error.ts";
 import { HelpGenerator } from "../help.ts";
 import { Parser } from "../parser.ts";
@@ -181,6 +172,29 @@ class EnumTestCmd {
   }
 }
 
+// Command to test type inference with explicit type annotations
+@CommandDecorator({
+  name: "type-infer-test",
+  version: "1.0.0",
+})
+class TypeInferTestCmd {
+  // Explicit type annotation should trigger auto number parsing
+  @Arg({ long: "count", help: "A count value" })
+  count: number = 0;
+
+  // Explicit type annotation for boolean
+  @Arg({ long: "enabled", help: "Enable something" })
+  enabled: boolean = false;
+
+  // Array type should infer Append action
+  @Arg({ long: "items", help: "List of items" })
+  items: string[] = [];
+
+  run(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 // --- Test Suite ---
 
 describe("Clepo Integration Tests", () => {
@@ -247,7 +261,7 @@ describe("Clepo Integration Tests", () => {
             required: true,
             action: ArgAction.Append,
             type: "list",
-          })
+          }),
         )
         .addArg(
           new ArgClass({
@@ -255,7 +269,7 @@ describe("Clepo Integration Tests", () => {
             long: "dry-run",
             action: ArgAction.SetTrue,
             type: "boolean",
-          })
+          }),
         );
       freshAddCommand.cls = AddBuilder;
 
@@ -269,7 +283,7 @@ describe("Clepo Integration Tests", () => {
             long: "verbose",
             action: ArgAction.Count,
             global: true,
-          })
+          }),
         )
         .addSubcommand(freshAddCommand);
       freshGitCommand.cls = GitBuilder;
@@ -340,7 +354,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["-V"], {}),
         ClepoError,
-        "wasn't expected"
+        "wasn't expected",
       );
     });
 
@@ -379,7 +393,7 @@ describe("Clepo Integration Tests", () => {
 
       const result = parser.parse(
         ["--config", "/cli/path.conf"],
-        { APP_CONFIG: "/env/path.conf" }
+        { APP_CONFIG: "/env/path.conf" },
       );
       const instance = result.instance as EnvTestCmd;
 
@@ -407,7 +421,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["--port", "not-a-number"], {}),
         ClepoError,
-        "expected a number"
+        "expected a number",
       );
     });
 
@@ -430,7 +444,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["--multiplier", "-1"], {}),
         ClepoError,
-        "must be positive"
+        "must be positive",
       );
     });
   });
@@ -455,7 +469,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["--level", "verbose"], {}),
         ClepoError,
-        "is not a valid value"
+        "is not a valid value",
       );
     });
   });
@@ -469,7 +483,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["--unknown"], {}),
         ClepoError,
-        "wasn't expected"
+        "wasn't expected",
       );
     });
 
@@ -481,7 +495,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse([], {}),
         ClepoError,
-        "required argument was not provided"
+        "required argument was not provided",
       );
     });
 
@@ -493,7 +507,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse(["--name"], {}),
         ClepoError,
-        "requires a value"
+        "requires a value",
       );
     });
 
@@ -596,6 +610,88 @@ describe("Clepo Integration Tests", () => {
     });
   });
 
+  describe("Type Inference", () => {
+    it("should auto-parse numbers when property has explicit type annotation", () => {
+      const cmd = getCommand(TypeInferTestCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result = parser.parse(["--count", "42"], {});
+      const instance = result.instance as TypeInferTestCmd;
+
+      assertEquals(instance.count, 42);
+      assertEquals(typeof instance.count, "number");
+    });
+
+    it("should infer SetTrue action for boolean properties", () => {
+      const cmd = getCommand(TypeInferTestCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result = parser.parse(["--enabled"], {});
+      const instance = result.instance as TypeInferTestCmd;
+
+      assertEquals(instance.enabled, true);
+    });
+
+    it("should infer Append action for array properties", () => {
+      const cmd = getCommand(TypeInferTestCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      const result = parser.parse(["--items", "a", "--items", "b"], {});
+      const instance = result.instance as TypeInferTestCmd;
+
+      assertEquals(instance.items, ["a", "b"]);
+    });
+
+    it("should use explicit type config over reflection (TC39 future-proofing)", () => {
+      // This test verifies that explicit type configuration works,
+      // which is essential for TC39 decorators that don't support emitDecoratorMetadata
+      @CommandDecorator({
+        name: "explicit-type-test",
+        version: "1.0.0",
+      })
+      class ExplicitTypeCmd {
+        // Explicit type: "number" - should auto-parse as number
+        @Arg({ long: "count", type: "number" })
+        count!: number;
+
+        // Explicit type: "boolean" with SetTrue action
+        @Arg({ long: "verbose", type: "boolean" })
+        verbose = false;
+
+        // Explicit type: "list" for array
+        @Arg({ long: "items", type: "list" })
+        items!: string[];
+
+        run(): Promise<void> {
+          return Promise.resolve();
+        }
+      }
+
+      const cmd = getCommand(ExplicitTypeCmd);
+      cmd.finalize();
+      const parser = new Parser(cmd);
+
+      // Test number parsing works with explicit type
+      const result1 = parser.parse(["--count", "42"], {});
+      const instance1 = result1.instance as ExplicitTypeCmd;
+      assertEquals(instance1.count, 42);
+      assertEquals(typeof instance1.count, "number");
+
+      // Test boolean flag works with explicit type
+      const result2 = parser.parse(["--verbose"], {});
+      const instance2 = result2.instance as ExplicitTypeCmd;
+      assertEquals(instance2.verbose, true);
+
+      // Test list works with explicit type
+      const result3 = parser.parse(["--items", "a", "--items", "b"], {});
+      const instance3 = result3.instance as ExplicitTypeCmd;
+      assertEquals(instance3.items, ["a", "b"]);
+    });
+  });
+
   describe("Escape Sequence (--)", () => {
     it("should treat arguments after -- as positional values", () => {
       // Create a command that takes positional args
@@ -655,7 +751,7 @@ describe("Clepo Integration Tests", () => {
       assertThrows(
         () => parser.parse([], {}),
         ClepoError,
-        "requires a subcommand"
+        "requires a subcommand",
       );
     });
   });

@@ -84,7 +84,7 @@ export class HelpGenerator {
 
     // Filter out help/version from the options count for usage display
     const userOptions = options.filter(
-      (a) => a.action !== ArgAction.Help && a.action !== ArgAction.Version
+      (a) => a.action !== ArgAction.Help && a.action !== ArgAction.Version,
     );
 
     if (userOptions.length > 0) {
@@ -148,10 +148,7 @@ export class HelpGenerator {
       help += ` ${this.theme.defaultValue(`[env: ${arg.env}]`)}`;
     }
     if (arg.default !== undefined) {
-      const val =
-        typeof arg.default === "string"
-          ? `"${arg.default}"`
-          : String(arg.default);
+      const val = typeof arg.default === "string" ? `"${arg.default}"` : String(arg.default);
       help += ` ${this.theme.defaultValue(`[default: ${val}]`)}`;
     }
     return help.trim();
@@ -189,19 +186,19 @@ export class HelpGenerator {
 
     // Sort options: regular options first, then help, then version
     options.sort((a, b) => {
-      const aIsBuiltin =
-        a.action === ArgAction.Help || a.action === ArgAction.Version;
-      const bIsBuiltin =
-        b.action === ArgAction.Help || b.action === ArgAction.Version;
+      const aIsBuiltin = a.action === ArgAction.Help || a.action === ArgAction.Version;
+      const bIsBuiltin = b.action === ArgAction.Help || b.action === ArgAction.Version;
 
       if (aIsBuiltin && !bIsBuiltin) return 1;
       if (!aIsBuiltin && bIsBuiltin) return -1;
 
       // Among builtins, help comes before version
-      if (a.action === ArgAction.Help && b.action === ArgAction.Version)
+      if (a.action === ArgAction.Help && b.action === ArgAction.Version) {
         return -1;
-      if (a.action === ArgAction.Version && b.action === ArgAction.Help)
+      }
+      if (a.action === ArgAction.Version && b.action === ArgAction.Help) {
         return 1;
+      }
 
       return 0;
     });

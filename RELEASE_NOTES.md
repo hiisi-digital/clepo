@@ -1,5 +1,61 @@
 # clepo Release Notes
 
+## v0.4.1: Code Quality & TC39 Future-Proofing
+
+This release focuses on code quality improvements and preparing for the eventual
+migration to TC39 Stage 3 decorators.
+
+### New Features
+
+- **Explicit Type Configuration**: The `@Arg` decorator now accepts an explicit
+  `type` option (`"string"`, `"number"`, `"boolean"`, `"list"`) that takes
+  precedence over reflection-based inference. This future-proofs your code for
+  TC39 decorators which don't support `emitDecoratorMetadata`.
+
+```typescript
+// Works without reflection metadata (TC39-ready)
+@Arg({ long: "count", type: "number" })
+count!: number;
+```
+
+### Improvements
+
+- **Modern Linting**: Added comprehensive Deno lint configuration with strict
+  rules including `explicit-function-return-type`, `ban-untagged-todo`,
+  `eqeqeq`, and more.
+- **Consistent Formatting**: Added `deno fmt` configuration with 100-char line
+  width and consistent style.
+- **Explicit Return Types**: All functions now have explicit return types.
+- **Tagged TODOs**: All TODO comments now reference issues for tracking.
+- **Expanded Test Suite**: Increased from 42 to 47 integration tests, including
+  explicit type configuration tests.
+- **JSR Publish Config**: Added `publish` configuration in `deno.json` for clean
+  JSR publishing.
+- **New Task Commands**: Added `deno task all`, `deno task prepublish`,
+  `deno task fmt:check`, and `deno task test:coverage`.
+
+### Research
+
+Comprehensive research was conducted on TC39 decorators, TypeScript's roadmap,
+Deno 2.0, and alternative metaprogramming approaches (macros, attributes). Key
+findings:
+
+- **No alternatives to decorators are coming** - TC39 and TypeScript have no
+  plans for C#-style attributes or macro systems
+- **TC39 Decorator Metadata** (`Symbol.metadata`) is the replacement for
+  `emitDecoratorMetadata`
+- **Hybrid approach recommended** - Support both TC39 and legacy decorators
+
+See `/research/00-SUMMARY.md` for full details.
+
+### Internal
+
+- All source files pass strict `deno lint` rules
+- Zero formatting issues via `deno fmt --check`
+- All 47 tests pass
+
+---
+
 ## v0.4.0: Architecture Refactor
 
 This is a major release that completely refactors the parsing architecture to
