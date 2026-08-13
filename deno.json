@@ -1,6 +1,7 @@
 {
   "name": "@loru/clepo",
   "version": "0.5.0",
+  "description": "A clap-inspired CLI framework for Deno with decorator and builder APIs.",
   "exports": "./mod.ts",
   "compilerOptions": {
     "strict": true,
