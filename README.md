@@ -19,10 +19,10 @@ the common case, and a builder API for when you need more control at runtime.
 ```typescript
 import { Arg, ArgAction, Cli, Command, Subcommands } from "@loru/clepo";
 
-// A subcommand - handles the 'add' action
+// a subcommand: handles the 'add' action
 @Command({ about: "Add files to staging" })
 class AddCmd {
-  // No short/long means positional. Append collects multiple values.
+  // no short/long means positional; Append collects multiple values
   @Arg({ required: true, action: ArgAction.Append })
   files!: string[];
 
@@ -36,21 +36,21 @@ class AddCmd {
   }
 }
 
-// Create a subcommand "enum" - just like Rust's #[derive(Subcommand)] enum!
+// a subcommand "enum", like Rust's #[derive(Subcommand)] enum
 const Commands = Subcommands(AddCmd);
 
-// The root command
+// the root command
 @Command({
   name: "git",
   version: "0.1.0",
   about: "A simplified git-like CLI",
 })
 class GitCli {
-  // Global flags propagate to subcommands. Count increments per occurrence.
+  // global flags propagate to subcommands; Count increments per occurrence
   @Arg({ short: "v", long: true, action: ArgAction.Count, global: true })
   verbose = 0;
 
-  // The subcommand - type is automatically inferred as AddCmd!
+  // the subcommand: type is inferred as AddCmd
   command = Commands;
 
   async run() {
@@ -126,7 +126,7 @@ Type inference works from TypeScript annotations when `emitDecoratorMetadata` is
 enabled. For future TC39 decorator compatibility, there's also an explicit `type`
 option that doesn't rely on reflection.
 
-The library includes comprehensive integration tests covering all major features.
+Integration tests cover the major features.
 
 ## Features
 
@@ -226,7 +226,7 @@ class DiffCmd {
   }
 }
 
-// Create the "enum" - one line!
+// create the "enum" in one line
 const Commands = Subcommands(CloneCmd, DiffCmd);
 
 @Command({ name: "git", version: "1.0.0" })
@@ -234,30 +234,26 @@ class GitCli {
   @Arg({ short: "v", long: "verbose" })
   verbose = false;
 
-  // Type is automatically CloneCmd | DiffCmd
+  // type is CloneCmd | DiffCmd
   command = Commands;
 
   async run() {}
 }
 ```
 
-Compare to Rust's clap:
-
-| Rust clap                       | TypeScript clepo                            |
-| :------------------------------ | :------------------------------------------ |
-| `enum Commands { Clone, Diff }` | `const Commands = Subcommands(Clone, Diff)` |
-| `command: Commands`             | `command = Commands`                        |
+Where Rust's clap declares `enum Commands { Clone, Diff }` and a `command: Commands`
+field, clepo writes `const Commands = Subcommands(Clone, Diff)` and `command = Commands`.
 
 ### Alternative Patterns
 
 You can also use the explicit `@Subcommand` decorator if preferred:
 
 ```typescript
-// With Subcommands() helper
+// with the Subcommands() helper
 @Subcommand(Commands)
 command = Commands;
 
-// Or the original array-based API
+// or the original array-based API
 @Subcommand([CloneCmd, DiffCmd])
 command!: CloneCmd | DiffCmd;
 ```
@@ -301,7 +297,7 @@ try {
 | `UnexpectedArgument`      | An argument was provided in the wrong context |
 | `MissingSubcommand`       | A required subcommand was not provided        |
 | `ArgumentConflict`        | Mutually exclusive arguments were used        |
-| `Internal`                | A bug in clepo (please report!)               |
+| `Internal`                | A bug in clepo itself; please report it       |
 
 ## Installation
 
