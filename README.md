@@ -20,7 +20,7 @@ the common case, and a builder API for when you need more control at runtime.
 import { Arg, ArgAction, Cli, Command, Subcommands } from "@loru/clepo";
 
 // a subcommand: handles the 'add' action
-@Command({ about: "Add files to staging" })
+@Command({ name: "add", about: "Add files to staging" })
 class AddCmd {
   // no short/long means positional; Append collects multiple values
   @Arg({ required: true, action: ArgAction.Append })
@@ -206,7 +206,7 @@ subcommand enums. It automatically infers the union type from the provided class
 ```typescript
 import { Arg, Command, Subcommands } from "@loru/clepo";
 
-@Command({ about: "Clone a repository" })
+@Command({ name: "clone", about: "Clone a repository" })
 class CloneCmd {
   @Arg({ required: true })
   remote!: string;
@@ -216,7 +216,7 @@ class CloneCmd {
   }
 }
 
-@Command({ about: "Show diff between commits" })
+@Command({ name: "diff", about: "Show diff between commits" })
 class DiffCmd {
   @Arg({ long: "base" })
   base?: string;
