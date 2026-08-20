@@ -60,13 +60,14 @@ export function isSubcommandsMarker(
  * @example
  * ```typescript
  * // Define subcommand classes
- * @Command({ about: "Clones repos" })
+ * @Command({ name: "clone", about: "Clones repos" })
  * class Clone {
- *   @Arg({ positional: true })
+ *   // no short/long means positional
+ *   @Arg({ required: true })
  *   remote!: string;
  * }
  *
- * @Command({ about: "Shows diff" })
+ * @Command({ name: "diff", about: "Shows diff" })
  * class Diff {
  *   @Arg() base?: string;
  * }
