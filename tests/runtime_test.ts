@@ -25,44 +25,62 @@
 
 import { assertEquals } from "@std/assert";
 
-/** Source files, which is every `.ts` at the root other than the tests. */
-async function sources(): Promise<string[]> {
-  const found: string[] = [];
-  for await (const entry of Deno.readDir(new URL("../", import.meta.url))) {
-    if (entry.isFile && entry.name.endsWith(".ts")) found.push(entry.name);
-  }
-  return found.sort();
+interface Line {
+  readonly where: string;
+  readonly text: string;
 }
 
-function isProse(line: string): boolean {
-  const trimmed = line.trimStart();
-  return trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*");
+/**
+ * Every line of every root source that is code rather than prose.
+ *
+ * Read in one pass and shared by both guards, so neither awaits inside a loop
+ * and neither can disagree with the other about which files count.
+ */
+async function codeLines(): Promise<Line[]> {
+  const names: string[] = [];
+  for await (const entry of Deno.readDir(new URL("../", import.meta.url))) {
+    if (entry.isFile && entry.name.endsWith(".ts")) names.push(entry.name);
+  }
+  names.sort();
+
+  const files = await Promise.all(names.map(async (name) => ({
+    name,
+    text: await Deno.readTextFile(new URL(`../${name}`, import.meta.url)),
+  })));
+
+  const lines: Line[] = [];
+  for (const { name, text } of files) {
+    for (const [index, text_] of text.split("\n").entries()) {
+      const trimmed = text_.trimStart();
+      if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) continue;
+      lines.push({ where: `${name}:${index + 1}`, text: text_ });
+    }
+  }
+  return lines;
+}
+
+function offending(lines: readonly Line[], pattern: RegExp): string[] {
+  return lines.filter(({ text }) => pattern.test(text)).map(({ where, text }) =>
+    `${where}: ${text.trim()}`
+  );
 }
 
 Deno.test("no source file reaches for a runtime-specific global", async () => {
-  const offenders: string[] = [];
-  for (const name of await sources()) {
-    const text = await Deno.readTextFile(new URL(`../${name}`, import.meta.url));
-    for (const [index, line] of text.split("\n").entries()) {
-      if (isProse(line)) continue;
-      if (/\bDeno\./.test(line)) offenders.push(`${name}:${index + 1}: ${line.trim()}`);
-    }
-  }
-  assertEquals(offenders, [], "these make the package deno-only");
+  assertEquals(
+    offending(await codeLines(), /\bDeno\./),
+    [],
+    "these make the package deno-only",
+  );
 });
 
 Deno.test("no source file imports a platform module directly", async () => {
   // `node:stream` was here, doing what shimp's `stdoutStream` does. It worked,
-  // and it put a runtime's namespace in a package that targets three. Anything
-  // this needs from the runtime comes through shimp, so that the day one of the
-  // three diverges there is one place to change rather than every consumer.
-  const offenders: string[] = [];
-  for (const name of await sources()) {
-    const text = await Deno.readTextFile(new URL(`../${name}`, import.meta.url));
-    for (const [index, line] of text.split("\n").entries()) {
-      if (isProse(line)) continue;
-      if (/from\s+["']node:/.test(line)) offenders.push(`${name}:${index + 1}: ${line.trim()}`);
-    }
-  }
-  assertEquals(offenders, [], "these belong behind @hiisi/shimp");
+  // and it put one runtime's namespace in a package that targets three. Anything
+  // this needs from the runtime comes through shimp, so the day one of them
+  // diverges there is a single place to change rather than every consumer.
+  assertEquals(
+    offending(await codeLines(), /from\s+["']node:/),
+    [],
+    "these belong behind @hiisi/shimp",
+  );
 });
