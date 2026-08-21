@@ -5,7 +5,14 @@ import { ClepoError } from "./error.ts";
 import { HelpGenerator } from "./help.ts";
 import { Parser } from "./parser.ts";
 import type { Context } from "./types.ts";
-import { args as runtimeArgs, env as runtimeEnv, exit, stderr, stdin, stdout } from "./runtime.ts";
+import {
+  args as runtimeArgs,
+  env as runtimeEnv,
+  exit,
+  stderrStream,
+  stdinStream,
+  stdoutStream,
+} from "@hiisi/shimp";
 
 /**
  * Flags that control the behavior of a command.
@@ -323,13 +330,13 @@ export class Command {
         // program that never reads it would hang on exit. A program that does
         // read it pays for the stream at the moment it asks.
         get stdout(): WritableStream<Uint8Array> {
-          return stdout();
+          return stdoutStream();
         },
         get stderr(): WritableStream<Uint8Array> {
-          return stderr();
+          return stderrStream();
         },
         get stdin(): ReadableStream<Uint8Array> {
-          return stdin();
+          return stdinStream();
         },
         // deno-lint-ignore no-explicit-any
         helper: null as any, // Placeholder for now
