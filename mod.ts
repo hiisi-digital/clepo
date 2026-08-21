@@ -188,7 +188,7 @@ export interface CliInterface {
  *
  * @example
  * ```typescript
- * import { Arg, Cli, Command } from "@loru/clepo";
+ * import { Arg, Cli, Command } from "@hiisi/clepo";
  *
  * @Command({ name: "greet", version: "1.0.0" })
  * class Greet {

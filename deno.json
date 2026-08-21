@@ -1,7 +1,9 @@
 {
-  "name": "@loru/clepo",
+  "name": "@hiisi/clepo",
   "version": "0.5.0",
   "description": "A clap-inspired CLI framework for Deno with decorator and builder APIs.",
+  "license": "MPL-2.0",
+  "repository": "https://github.com/hiisi-digital/clepo",
   "exports": "./mod.ts",
   "compilerOptions": {
     "strict": true,
@@ -15,10 +17,17 @@
     "reflect-metadata": "npm:reflect-metadata@^0.2.2"
   },
   "lint": {
-    "include": ["*.ts", "tests/"],
-    "exclude": ["docs_ref/"],
+    "include": [
+      "*.ts",
+      "tests/"
+    ],
+    "exclude": [
+      "docs_ref/"
+    ],
     "rules": {
-      "tags": ["recommended"],
+      "tags": [
+        "recommended"
+      ],
       "include": [
         "ban-untagged-todo",
         "camelcase",
@@ -52,8 +61,14 @@
     "semiColons": true,
     "singleQuote": false,
     "proseWrap": "preserve",
-    "include": ["*.ts", "*.md", "tests/"],
-    "exclude": ["docs_ref/"]
+    "include": [
+      "*.ts",
+      "*.md",
+      "tests/"
+    ],
+    "exclude": [
+      "docs_ref/"
+    ]
   },
   "tasks": {
     "test": "deno test tests/ --allow-read --allow-env",
@@ -93,5 +108,37 @@
       "RELEASE_NOTES.md",
       ".githooks/"
     ]
+  },
+  "distDir": "target",
+  "dist": {
+    "node": {
+      "runtime": "node",
+      "versions": [
+        "20",
+        "22",
+        "24"
+      ],
+      "plugins": [
+        "deno-to-node"
+      ]
+    },
+    "bun": {
+      "runtime": "bun",
+      "versions": [
+        "latest"
+      ],
+      "plugins": [
+        "deno-to-bun"
+      ]
+    },
+    "deno": {
+      "runtime": "deno",
+      "versions": [
+        "v2.x"
+      ],
+      "plugins": [
+        "deno-passthrough"
+      ]
+    }
   }
 }
