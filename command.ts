@@ -5,6 +5,14 @@ import { ClepoError } from "./error.ts";
 import { HelpGenerator } from "./help.ts";
 import { Parser } from "./parser.ts";
 import type { Context } from "./types.ts";
+import {
+  args as runtimeArgs,
+  env as runtimeEnv,
+  exit,
+  stderrStream,
+  stdinStream,
+  stdoutStream,
+} from "@hiisi/shimp";
 
 /**
  * Flags that control the behavior of a command.
@@ -289,12 +297,12 @@ export class Command {
    * entire process of finalization, parsing, and execution, including
    * automatic help/version handling and graceful error reporting.
    *
-   * @param args The command-line arguments to parse (defaults to `Deno.args`).
-   * @param env The environment variables to use (defaults to `Deno.env`).
+   * @param args The command-line arguments to parse (defaults to the process's own).
+   * @param env The environment variables to use (defaults to the process's own).
    */
   public async run(
-    args: string[] = Deno.args,
-    env: Record<string, string> = Deno.env.toObject(),
+    args: string[] = runtimeArgs(),
+    env: Record<string, string> = runtimeEnv(),
   ): Promise<void> {
     try {
       this.finalize();
@@ -306,20 +314,30 @@ export class Command {
       if (result.helpRequested) {
         const help = new HelpGenerator(result.command).generate();
         console.log(help);
-        Deno.exit(0);
+        exit(0);
       }
       if (result.versionRequested) {
         console.log(result.command.version ?? "N/A");
-        Deno.exit(0);
+        exit(0);
       }
 
       // TODO(#clepo-context): Build a real context object. For now, a placeholder.
       const context: Context = {
         args: args,
         env: env,
-        stdout: Deno.stdout.writable,
-        stderr: Deno.stderr.writable,
-        stdin: Deno.stdin.readable,
+        // Getters, not values. Building the stdin stream opens stdin, and an
+        // open stdin keeps the process alive after `run()` returns, so every
+        // program that never reads it would hang on exit. A program that does
+        // read it pays for the stream at the moment it asks.
+        get stdout(): WritableStream<Uint8Array> {
+          return stdoutStream();
+        },
+        get stderr(): WritableStream<Uint8Array> {
+          return stderrStream();
+        },
+        get stdin(): ReadableStream<Uint8Array> {
+          return stdinStream();
+        },
         // deno-lint-ignore no-explicit-any
         helper: null as any, // Placeholder for now
       };
@@ -335,7 +353,7 @@ export class Command {
             `For more information, try '--help'.`,
           );
         }
-        Deno.exit(1);
+        exit(1);
       } else {
         // Re-throw unexpected errors.
         throw e;

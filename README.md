@@ -3,7 +3,7 @@
 <div align="center" style="text-align: center;">
 
 [![GitHub Stars](https://img.shields.io/github/stars/hiisi-digital/clepo.svg)](https://github.com/hiisi-digital/clepo/stargazers)
-[![JSR Version](https://img.shields.io/jsr/v/@loru/clepo)](https://jsr.io/@loru/clepo)
+[![JSR Version](https://img.shields.io/jsr/v/@hiisi/clepo)](https://jsr.io/@hiisi/clepo)
 [![GitHub Issues](https://img.shields.io/github/issues/hiisi-digital/clepo.svg)](https://github.com/hiisi-digital/clepo/issues)
 ![License](https://img.shields.io/github/license/hiisi-digital/clepo?color=%23009689)
 
@@ -11,13 +11,46 @@
 
 </div>
 
+## Installation
+
+Not published yet. Until it is, a sibling checkout is how to consume it, which is
+`deno.json`'s `links` doing what cargo's `[patch]` does:
+
+```json
+{
+  "links": ["../clepo"],
+  "imports": { "@hiisi/clepo": "jsr:@hiisi/clepo@^0.5.0" }
+}
+```
+
+Once it ships:
+
+```bash
+deno add jsr:@hiisi/clepo
+npm install @hiisi/clepo
+bun add @hiisi/clepo
+```
+
+It targets all three. What is checked today is that the source names no
+runtime: `tests/runtime_test.ts` walks every file and fails on a `Deno.` global
+or a direct `node:` import, so nothing here can quietly become deno-only. That
+is a guard on the shape of the source, not a run under node and bun, and the
+distinction is worth making because the two are not the same evidence. A build
+that produces both distributions and runs a shared script against them is what
+would settle it, and it needs `@hiisi/shimp` on a registry first.
+
+The decorator API needs `experimentalDecorators` and
+`emitDecoratorMetadata` in the consuming project's compiler options, because that
+is where the design-time types it reflects on come from; the builder API needs
+neither and is the one to reach for when a build step cannot be arranged.
+
 ## Usage
 
 This library provides two ways to define command-line interfaces: decorators for
 the common case, and a builder API for when you need more control at runtime.
 
 ```typescript
-import { Arg, ArgAction, Cli, Command, Subcommands } from "@loru/clepo";
+import { Arg, ArgAction, Cli, Command, Subcommands } from "@hiisi/clepo";
 
 // a subcommand: handles the 'add' action
 @Command({ name: "add", about: "Add files to staging" })
@@ -73,7 +106,7 @@ Adding: file1.txt, file2.txt
 The builder API does the same thing, just without decorators:
 
 ```typescript
-import { ArgAction, ArgBuilder, CommandBuilder } from "@loru/clepo";
+import { ArgAction, ArgBuilder, CommandBuilder } from "@hiisi/clepo";
 
 class GreetInstance {
   name?: string;
@@ -204,7 +237,7 @@ The `Subcommands()` function provides a clap-like ergonomic API for defining
 subcommand enums. It automatically infers the union type from the provided classes:
 
 ```typescript
-import { Arg, Command, Subcommands } from "@loru/clepo";
+import { Arg, Command, Subcommands } from "@hiisi/clepo";
 
 @Command({ name: "clone", about: "Clone a repository" })
 class CloneCmd {
@@ -263,7 +296,7 @@ command!: CloneCmd | DiffCmd;
 Clepo provides structured errors that can be programmatically handled:
 
 ```typescript
-import { ClepoError, ErrorKind } from "@loru/clepo";
+import { ClepoError, ErrorKind } from "@hiisi/clepo";
 
 try {
   await Cli.run(MyCommand);
@@ -302,7 +335,7 @@ try {
 ## Installation
 
 ```typescript
-import { Arg, Cli, Command, Subcommands } from "jsr:@loru/clepo";
+import { Arg, Cli, Command, Subcommands } from "jsr:@hiisi/clepo";
 ```
 
 Or in `deno.json`:
@@ -310,7 +343,7 @@ Or in `deno.json`:
 ```json
 {
   "imports": {
-    "@loru/clepo": "jsr:@loru/clepo@^0.5.0"
+    "@hiisi/clepo": "jsr:@hiisi/clepo@^0.5.0"
   }
 }
 ```

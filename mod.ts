@@ -161,6 +161,36 @@ export type { Helper } from "./types.ts";
 /**
  * The custom error class for clepo-related failures.
  */
+/**
+ * The parser, for a consumer that wants the result rather than the execution.
+ *
+ * `run()` parses and then dispatches, which is what a program wants and what a
+ * test cannot use: there is no way to ask what a command line means without
+ * running whatever it means. Every tool with a testable argument surface needs
+ * this, and without it a consumer keeps its own parser and this package becomes
+ * the thing it was written to replace.
+ *
+ * @example
+ * ```ts ignore
+ * const result = new Parser(cmd).parse(["build", "--feature", "json"]);
+ * if (result.helpRequested) console.log(new HelpGenerator(result.command).generate());
+ * ```
+ */
+export { Parser } from "./parser.ts";
+
+/** What {@linkcode Parser.parse} hands back: the instance, the matched command, and the two requests. */
+export type { ParseResult } from "./parser.ts";
+
+/**
+ * The help renderer, for a consumer that prints help somewhere `run()` does not.
+ *
+ * A tool that wraps its own error reporting, or that shows usage on a bad
+ * argument rather than on `--help`, needs to render the same text `run()` would
+ * have. Writing that text out by hand is how a help string drifts from the flags
+ * it describes.
+ */
+export { HelpGenerator } from "./help.ts";
+
 export { ClepoError } from "./error.ts";
 
 /**
@@ -188,7 +218,7 @@ export interface CliInterface {
  *
  * @example
  * ```typescript
- * import { Arg, Cli, Command } from "@loru/clepo";
+ * import { Arg, Cli, Command } from "@hiisi/clepo";
  *
  * @Command({ name: "greet", version: "1.0.0" })
  * class Greet {
