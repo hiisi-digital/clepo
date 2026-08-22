@@ -245,7 +245,7 @@ decorators. clepo supports both with the following priority:
 ### Decorator API (Recommended)
 
 ```typescript
-import { Arg, ArgAction, Cli, Command, Subcommands } from "@loru/clepo";
+import { Arg, ArgAction, Cli, Command, Subcommands } from "@hiisi/clepo";
 
 // Subcommand definition
 @Command({ about: "Add files to staging" })
@@ -287,7 +287,7 @@ await Cli.run(Git);
 ### Builder API
 
 ```typescript
-import { ArgAction, ArgBuilder, CommandBuilder } from "@loru/clepo";
+import { ArgAction, ArgBuilder, CommandBuilder } from "@hiisi/clepo";
 
 class GitInstance {
   verbose = 0;
@@ -316,7 +316,7 @@ await git.run();
 ### Value Parsers
 
 ```typescript
-import { Arg, Cli, Command } from "@loru/clepo";
+import { Arg, Cli, Command } from "@hiisi/clepo";
 
 @Command({ name: "config", version: "1.0.0" })
 class ConfigCmd {
@@ -350,7 +350,7 @@ await Cli.run(ConfigCmd);
 ### Error Handling
 
 ```typescript
-import { ClepoError, ErrorKind } from "@loru/clepo";
+import { ClepoError, ErrorKind } from "@hiisi/clepo";
 
 try {
   await Cli.run(MyCommand);
