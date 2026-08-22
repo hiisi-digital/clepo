@@ -65,7 +65,7 @@ function offending(lines: readonly Line[], pattern: RegExp): string[] {
   );
 }
 
-Deno.test("no source file reaches for a runtime-specific global", async () => {
+Deno.test("no source file under the package root names a runtime global", async () => {
   assertEquals(
     offending(await codeLines(), /\bDeno\./),
     [],
@@ -73,7 +73,7 @@ Deno.test("no source file reaches for a runtime-specific global", async () => {
   );
 });
 
-Deno.test("no source file imports a platform module directly", async () => {
+Deno.test("no source file under the package root imports a platform module", async () => {
   // `node:stream` was here, doing what shimp's `stdoutStream` does. It worked,
   // and it put one runtime's namespace in a package that targets three. Anything
   // this needs from the runtime comes through shimp, so the day one of them

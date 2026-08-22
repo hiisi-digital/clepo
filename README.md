@@ -31,7 +31,15 @@ npm install @hiisi/clepo
 bun add @hiisi/clepo
 ```
 
-It runs on all three. The decorator API needs `experimentalDecorators` and
+It targets all three. What is checked today is that the source names no
+runtime: `tests/runtime_test.ts` walks every file and fails on a `Deno.` global
+or a direct `node:` import, so nothing here can quietly become deno-only. That
+is a guard on the shape of the source, not a run under node and bun, and the
+distinction is worth making because the two are not the same evidence. A build
+that produces both distributions and runs a shared script against them is what
+would settle it, and it needs `@hiisi/shimp` on a registry first.
+
+The decorator API needs `experimentalDecorators` and
 `emitDecoratorMetadata` in the consuming project's compiler options, because that
 is where the design-time types it reflects on come from; the builder API needs
 neither and is the one to reach for when a build step cannot be arranged.
