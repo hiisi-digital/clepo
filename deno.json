@@ -145,6 +145,8 @@
   "links": [
     "../shimp",
     "../onlywhen",
-    "../tgts"
+    "../tgts",
+    "../cfg-ts",
+    "../ft-flags"
   ]
 }
