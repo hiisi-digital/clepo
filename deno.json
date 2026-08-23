@@ -15,7 +15,10 @@
     "@std/assert": "jsr:@std/assert@^1.0.0",
     "@std/testing": "jsr:@std/testing@^1.0.0",
     "reflect-metadata": "npm:reflect-metadata@^0.2.2",
-    "@hiisi/shimp": "jsr:@hiisi/shimp@^0.1.0"
+    "@hiisi/shimp": "jsr:@hiisi/shimp@^0.1.0",
+    "@hiisi/viola": "jsr:@hiisi/viola@^0.4.0",
+    "@hiisi/viola-default-lints": "jsr:@hiisi/viola-default-lints@^0.4.0",
+    "@hiisi/viola-grammar-ts": "jsr:@hiisi/viola-grammar-ts@^0.4.0"
   },
   "lint": {
     "include": [
@@ -75,7 +78,7 @@
     "test": "deno test tests/ --allow-read --allow-env --allow-write --allow-run",
     "test:watch": "deno test tests/ --allow-read --allow-env --allow-write --allow-run --watch",
     "test:coverage": "deno test tests/ --allow-read --allow-env --allow-write --allow-run --coverage=coverage/",
-    "lint": "deno run -A --min-dep-age=0 jsr:@hiisi/viola-cli@^0.3.1 --project . --include .",
+    "lint": "deno run -A gate.ts",
     "lint:fix": "deno lint --fix",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
@@ -147,7 +150,10 @@
     "../onlywhen",
     "../tgts",
     "../cfg-ts",
-    "../ft-flags"
+    "../ft-flags",
+    "../viola",
+    "../viola-default-lints",
+    "../viola-grammar-ts"
   ],
   "minimumDependencyAge": 0
 }

@@ -8,7 +8,7 @@ import { reflect, type SubcommandInfo } from "./reflect.ts";
  * Symbol used to identify SubcommandsMarker objects at runtime.
  * @internal
  */
-export const SUBCOMMANDS_MARKER = Symbol("clepo:subcommands_marker");
+const SUBCOMMANDS_MARKER = Symbol("clepo:subcommands_marker");
 
 /**
  * A marker type that holds subcommand class information.
@@ -39,7 +39,7 @@ export type SubcommandsResult<T extends (new () => any)[]> =
  * Checks if a value is a SubcommandsMarker.
  * @internal
  */
-export function isSubcommandsMarker(
+function isSubcommandsMarker(
   value: unknown,
   // deno-lint-ignore no-explicit-any
 ): value is SubcommandsMarker<any> {

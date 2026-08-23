@@ -57,6 +57,20 @@ function toConstructor(target: object): object {
 }
 
 /**
+ * Read a metadata list off a class, defaulting to empty.
+ *
+ * Three getters spelled this out: normalise the target to its constructor, read
+ * one key, and treat absence as an empty list. That last part is the reason it
+ * is worth one function rather than three: a getter that returned `undefined`
+ * on a class nobody decorated would push the check onto every call site, and
+ * the three were 90 per cent identical precisely because none of them wanted to.
+ */
+function metadataList<T>(target: object, key: string | symbol): T[] {
+  return (Reflect.getMetadata(key, toConstructor(target)) as T[] | undefined) ??
+    [];
+}
+
+/**
  * A singleton object that provides a clean API for setting and getting decorator metadata.
  * It uses the `Reflect.metadata` API, which is the standard for decorator-based libraries.
  *
@@ -119,9 +133,7 @@ export const reflect = {
    * @returns An array of argument configurations.
    */
   getArgs(target: object): Arg[] {
-    const ctor = toConstructor(target);
-    return (Reflect.getMetadata(argsMetadataKey, ctor) as Arg[] | undefined) ??
-      [];
+    return metadataList<Arg>(target, argsMetadataKey);
   },
 
   // --- Subcommand Metadata ---
@@ -144,10 +156,7 @@ export const reflect = {
    * @returns An array of subcommand information objects.
    */
   getSubcommands(target: object): SubcommandInfo[] {
-    const ctor = toConstructor(target);
-    return (Reflect.getMetadata(subcommandsMetadataKey, ctor) as
-      | SubcommandInfo[]
-      | undefined) ?? [];
+    return metadataList<SubcommandInfo>(target, subcommandsMetadataKey);
   },
 
   // --- Subcommand Property Markers (for auto-detection) ---
@@ -173,10 +182,7 @@ export const reflect = {
    * @returns An array of property names.
    */
   getSubcommandProperties(target: object): string[] {
-    const ctor = toConstructor(target);
-    return (Reflect.getMetadata(subcommandPropertiesMetadataKey, ctor) as
-      | string[]
-      | undefined) ?? [];
+    return metadataList<string>(target, subcommandPropertiesMetadataKey);
   },
 
   // --- Type Reflection ---

@@ -4,7 +4,7 @@
  * An iterator for walking through a cluster of short flags, like `-abc`.
  * This is created by `ParsedArg.toShort()`.
  */
-export class ShortFlags {
+class ShortFlags {
   private remaining: string;
   public readonly raw: string;
 

@@ -15,7 +15,7 @@ export enum ValueSource {
 /**
  * Represents the collected data for a single argument after parsing.
  */
-export interface MatchedArg {
+interface MatchedArg {
   /** The unique identifier of the argument. */
   id: string;
   /** The indices in the raw argument list where this argument appeared. */
@@ -177,33 +177,45 @@ export class ArgMatcher {
   }
 
   /**
+   * Apply a change to a matched argument, if there is one under `id`.
+   *
+   * Silence on a miss is the contract the three callers below want: the parser
+   * records a value the moment it reads one, and whether that argument was ever
+   * matched is a question it has already answered. Three copies of the lookup
+   * were three chances for one of them to start throwing instead.
+   */
+  private onMatched(id: string, change: (matched: MatchedArg) => void): void {
+    const matched = this.args.get(id);
+    if (matched) {
+      change(matched);
+    }
+  }
+
+  /**
    * Adds a value to a matched argument.
    */
   public addValTo(id: string, val: unknown): void {
-    const matched = this.args.get(id);
-    if (matched) {
+    this.onMatched(id, (matched) => {
       matched.vals.push(val);
-    }
+    });
   }
 
   /**
    * Adds an index to a matched argument (indicating where it appeared in the arg list).
    */
   public addIndexTo(id: string, index: number): void {
-    const matched = this.args.get(id);
-    if (matched) {
+    this.onMatched(id, (matched) => {
       matched.indices.push(index);
-    }
+    });
   }
 
   /**
    * Increments the occurrence count for an argument.
    */
   public incOccurrenceOf(id: string): void {
-    const matched = this.args.get(id);
-    if (matched) {
+    this.onMatched(id, (matched) => {
       matched.occurrences++;
-    }
+    });
   }
 
   /**
