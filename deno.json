@@ -78,7 +78,7 @@
     "test": "deno test tests/ --allow-read --allow-env --allow-write --allow-run",
     "test:watch": "deno test tests/ --allow-read --allow-env --allow-write --allow-run --watch",
     "test:coverage": "deno test tests/ --allow-read --allow-env --allow-write --allow-run --coverage=coverage/",
-    "lint": "deno run -A --min-dep-age=0 jsr:@hiisi/viola-cli@^0.3.1 --project . --include src,mod.ts",
+    "lint": "deno run -A --min-dep-age=0 jsr:@hiisi/viola-cli@^0.3.1 --project . --include .",
     "lint:fix": "deno lint --fix",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
