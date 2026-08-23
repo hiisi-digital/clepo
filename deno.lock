@@ -109,7 +109,7 @@
     "dependencies": [
       "jsr:@hiisi/shimp@0.1",
       "jsr:@hiisi/viola-default-lints@~0.3.1",
-      "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+      "jsr:@hiisi/viola-grammar-ts@~0.3.2",
       "jsr:@hiisi/viola@~0.3.1",
       "jsr:@std/assert@1",
       "jsr:@std/fmt@1",
@@ -122,7 +122,7 @@
           "jsr:@hiisi/ft-flags@~0.1.2",
           "jsr:@hiisi/tgts@0.2",
           "jsr:@hiisi/viola-default-lints@~0.3.1",
-          "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+          "jsr:@hiisi/viola-grammar-ts@~0.3.2",
           "jsr:@hiisi/viola@~0.3.1",
           "jsr:@std/assert@1",
           "jsr:@std/path@1",
@@ -133,7 +133,7 @@
       "jsr:@hiisi/ft-flags@0.2.1": {
         "dependencies": [
           "jsr:@hiisi/viola-default-lints@~0.3.1",
-          "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+          "jsr:@hiisi/viola-grammar-ts@~0.3.2",
           "jsr:@hiisi/viola@~0.3.1",
           "jsr:@std/assert@1",
           "jsr:@std/testing@1"
@@ -143,7 +143,7 @@
         "dependencies": [
           "jsr:@hiisi/tgts@0.2.0-alpha.1",
           "jsr:@hiisi/viola-default-lints@~0.3.1",
-          "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+          "jsr:@hiisi/viola-grammar-ts@~0.3.2",
           "jsr:@hiisi/viola@~0.3.1",
           "jsr:@std/assert@1",
           "jsr:@std/path@1",
@@ -154,7 +154,7 @@
         "dependencies": [
           "jsr:@hiisi/onlywhen@~0.5.3",
           "jsr:@hiisi/viola-default-lints@~0.3.1",
-          "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+          "jsr:@hiisi/viola-grammar-ts@~0.3.2",
           "jsr:@hiisi/viola@~0.3.1",
           "jsr:@std/assert@1",
           "jsr:@std/testing@1"
@@ -164,7 +164,7 @@
         "dependencies": [
           "jsr:@hiisi/flash-freeze@~0.1.1",
           "jsr:@hiisi/viola-default-lints@~0.3.1",
-          "jsr:@hiisi/viola-grammar-ts@~0.3.1",
+          "jsr:@hiisi/viola-grammar-ts@~0.3.2",
           "jsr:@hiisi/viola@~0.3.1",
           "jsr:@std/assert@1",
           "jsr:@std/testing@1"
