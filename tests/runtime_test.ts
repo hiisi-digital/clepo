@@ -37,11 +37,26 @@ interface Line {
  * and neither can disagree with the other about which files count.
  */
 async function codeLines(): Promise<Line[]> {
-  const names: string[] = [];
-  for await (const entry of Deno.readDir(new URL("../", import.meta.url))) {
-    if (entry.isFile && entry.name.endsWith(".ts")) names.push(entry.name);
+  // What ships, read from the manifest, rather than whatever happens to sit at
+  // the root. The guard is about the published package: a consumer on node or
+  // bun gets exactly `publish.include` and nothing else.
+  //
+  // Reading the directory instead caught `gate.ts`, which runs this package's
+  // linter, is deno-only by nature and is not published. That is a true fact
+  // about a file nobody installs, and it would have made every package fail
+  // this the moment it grew any dev tooling at its root.
+  const manifest = JSON.parse(
+    await Deno.readTextFile(new URL("../deno.json", import.meta.url)),
+  ) as { publish?: { include?: string[] } };
+  const names = (manifest.publish?.include ?? [])
+    .filter((name) => name.endsWith(".ts"))
+    .sort();
+  if (names.length === 0) {
+    throw new Error(
+      "publish.include names no typescript files, so this guard would pass by " +
+        "reading nothing.",
+    );
   }
-  names.sort();
 
   const files = await Promise.all(names.map(async (name) => ({
     name,

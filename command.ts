@@ -35,7 +35,7 @@ export enum CommandSettings {
  * Defines a group of arguments.
  * This is the TypeScript equivalent of `clap::ArgGroup`.
  */
-export interface ArgGroup {
+interface ArgGroup {
   /** The unique identifier for the group. */
   id: string;
   /** The arguments that belong to this group. */

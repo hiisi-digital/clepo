@@ -236,6 +236,11 @@ export interface CliInterface {
  * ```
  */
 export const Cli: CliInterface = {
+  /**
+   * Build the command described by a decorated class, and run it.
+   *
+   * @param commandClass The class carrying the `@Command` decorator.
+   */
   async run(commandClass: new () => unknown): Promise<void> {
     const command: CommandBuilderType = getCommand(commandClass);
     await command.run();
